@@ -1,0 +1,4820 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>细胞 3D 结构探索 · 动物细胞与高等植物细胞互动图谱</title>
+  <meta name="description" content="交互式 3D 生物学细胞模型：高清可视化动物细胞与高等植物细胞，清晰呈现各细胞器立体剖面结构与功能介绍。" />
+  <style>
+    :root {
+      --bg-deep: #06101c;
+      --bg-mid: #0c1d30;
+      --glass: rgba(11, 23, 39, 0.78);
+      --glass-strong: rgba(9, 19, 34, 0.90);
+      --glass-border: rgba(148, 197, 255, 0.16);
+      --glass-border-hover: rgba(148, 197, 255, 0.36);
+      --text-primary: #eef6ff;
+      --text-secondary: #a8c0d9;
+      --text-muted: #6f8ba8;
+      --accent-animal: #38bdf8;
+      --accent-animal-glow: rgba(56, 189, 248, 0.28);
+      --accent-plant: #34d399;
+      --accent-plant-glow: rgba(52, 211, 153, 0.28);
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.28);
+      --radius-lg: 18px;
+      --radius-md: 12px;
+      --radius-sm: 8px;
+      --shadow-panel: 0 18px 48px rgba(0, 6, 16, 0.55);
+      --font-sans: "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    }
+
+    body.mode-plant {
+      --accent: var(--accent-plant);
+      --accent-glow: var(--accent-plant-glow);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: radial-gradient(circle at 52% 45%, #112942 0%, #091626 52%, #050c15 100%);
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      -webkit-font-smoothing: antialiased;
+      user-select: none;
+    }
+
+    /* Canvas & 3D stage */
+    #stage {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+    }
+
+    #webgl-canvas {
+      display: block;
+      width: 100%;
+      height: 100%;
+      cursor: grab;
+      touch-action: none;
+    }
+
+    #webgl-canvas:active {
+      cursor: grabbing;
+    }
+
+    /* 3D projected labels layer */
+    #labels-layer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 10;
+    }
+
+    .label-3d {
+      position: absolute;
+      left: 0;
+      top: 0;
+      transform: translate(-50%, -50%);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px 4px 7px;
+      border-radius: 999px;
+      background: rgba(8, 18, 32, 0.80);
+      border: 1px solid rgba(186, 222, 255, 0.24);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      color: #f0f7ff;
+      font-size: 12px;
+      font-weight: 500;
+      letter-spacing: 0.02em;
+      white-space: nowrap;
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.38);
+      pointer-events: auto;
+      cursor: pointer;
+      transition: opacity 0.2s ease, border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .label-3d:hover,
+    .label-3d.active {
+      background: rgba(14, 34, 58, 0.96);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px var(--accent-glow), 0 8px 22px rgba(0, 0, 0, 0.5);
+      z-index: 30;
+    }
+
+    .label-3d .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      box-shadow: 0 0 8px currentColor;
+    }
+
+    .label-3d.sub-pin {
+      background: rgba(10, 24, 42, 0.88);
+      border-color: rgba(255, 255, 255, 0.32);
+      font-size: 12px;
+      padding: 5px 11px 5px 8px;
+      pointer-events: none;
+    }
+
+    .label-3d.hidden {
+      opacity: 0 !important;
+      pointer-events: none !important;
+    }
+
+    /* Hover cursor tooltip */
+    #hover-tip {
+      position: fixed;
+      z-index: 45;
+      pointer-events: none;
+      padding: 6px 12px;
+      border-radius: 10px;
+      background: rgba(6, 15, 28, 0.92);
+      border: 1px solid var(--accent);
+      color: #f4f9ff;
+      font-size: 12.5px;
+      font-weight: 500;
+      box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
+      opacity: 0;
+      transform: translate(14px, 14px);
+      transition: opacity 0.14s ease;
+      white-space: nowrap;
+    }
+
+    #hover-tip.visible {
+      opacity: 1;
+    }
+
+    #hover-tip span {
+      display: block;
+      font-size: 11px;
+      color: var(--text-secondary);
+      font-weight: 400;
+      margin-top: 1px;
+    }
+
+    /* Top Header */
+    .top-bar {
+      position: fixed;
+      top: 16px;
+      left: 16px;
+      right: 16px;
+      z-index: 25;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      pointer-events: none;
+    }
+
+    .top-bar > * {
+      pointer-events: auto;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 9px 15px 9px 11px;
+      border-radius: 15px;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: var(--shadow-panel);
+    }
+
+    .brand-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: 10px;
+      background: linear-gradient(135deg, #38bdf8, #34d399);
+      display: grid;
+      place-items: center;
+      box-shadow: 0 4px 14px rgba(56, 189, 248, 0.35);
+      flex-shrink: 0;
+    }
+
+    .brand-title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      line-height: 1.2;
+    }
+
+    .brand-sub {
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-top: 1px;
+    }
+
+    /* Cell Switcher */
+    .cell-switcher {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px;
+      border-radius: 15px;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      box-shadow: var(--shadow-panel);
+      gap: 4px;
+    }
+
+    .switch-btn {
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      padding: 8px 16px;
+      border-radius: 11px;
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      transition: all 0.22s ease;
+      font-family: inherit;
+    }
+
+    .switch-btn:hover {
+      color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .switch-btn.active[data-cell="animal"] {
+      background: linear-gradient(135deg, rgba(14, 165, 233, 0.92), rgba(56, 189, 248, 0.85));
+      color: #031525;
+      box-shadow: 0 4px 16px rgba(56, 189, 248, 0.42);
+    }
+
+    .switch-btn.active[data-cell="plant"] {
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.92), rgba(52, 211, 153, 0.85));
+      color: #031f16;
+      box-shadow: 0 4px 16px rgba(52, 211, 153, 0.42);
+    }
+
+    .top-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .pill-btn {
+      border: 1px solid var(--glass-border);
+      background: var(--glass);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      color: var(--text-primary);
+      padding: 9px 14px;
+      border-radius: 13px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: var(--shadow-panel);
+      transition: all 0.18s ease;
+      font-family: inherit;
+    }
+
+    .pill-btn:hover {
+      border-color: var(--glass-border-hover);
+      background: rgba(18, 36, 60, 0.88);
+      transform: translateY(-1px);
+    }
+
+    .pill-btn.active {
+      border-color: var(--accent);
+      background: rgba(16, 40, 66, 0.92);
+      color: #fff;
+      box-shadow: 0 0 0 2px var(--accent-glow), var(--shadow-panel);
+    }
+
+    /* Isolate Banner */
+    #isolate-banner {
+      position: fixed;
+      top: 76px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-16px);
+      z-index: 28;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 10px 8px 16px;
+      border-radius: 999px;
+      background: rgba(9, 22, 38, 0.92);
+      border: 1px solid var(--accent);
+      box-shadow: 0 0 0 3px var(--accent-glow), 0 12px 32px rgba(0, 0, 0, 0.5);
+      backdrop-filter: blur(14px);
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.28s cubic-bezier(0.22, 1, 0.36, 1);
+      max-width: calc(100vw - 32px);
+    }
+
+    #isolate-banner.visible {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    #isolate-banner .iso-text {
+      font-size: 13px;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    #isolate-banner .iso-text strong {
+      color: var(--accent);
+    }
+
+    #isolate-banner .iso-exit {
+      border: none;
+      background: var(--accent);
+      color: #031524;
+      font-weight: 700;
+      font-size: 12.5px;
+      padding: 6px 13px;
+      border-radius: 999px;
+      cursor: pointer;
+      white-space: nowrap;
+      font-family: inherit;
+      transition: filter 0.16s ease;
+    }
+
+    #isolate-banner .iso-exit:hover {
+      filter: brightness(1.1);
+    }
+
+    /* Left Organelle Directory */
+    .sidebar {
+      position: fixed;
+      top: 80px;
+      left: 16px;
+      bottom: 84px;
+      width: 268px;
+      z-index: 22;
+      display: flex;
+      flex-direction: column;
+      border-radius: var(--radius-lg);
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      box-shadow: var(--shadow-panel);
+      overflow: hidden;
+      transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease;
+    }
+
+    .sidebar.collapsed {
+      transform: translateX(-290px);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .sidebar-header {
+      padding: 13px 14px 11px;
+      border-bottom: 1px solid rgba(148, 197, 255, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .sidebar-header h2 {
+      font-size: 13.5px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--text-primary);
+    }
+
+    .count-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: rgba(148, 197, 255, 0.14);
+      color: var(--accent);
+    }
+
+    .icon-btn {
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-secondary);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      transition: all 0.16s ease;
+    }
+
+    .icon-btn:hover {
+      background: rgba(255, 255, 255, 0.12);
+      color: #fff;
+    }
+
+    .sidebar-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px 8px 12px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148, 197, 255, 0.25) transparent;
+    }
+
+    .sidebar-list::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    .sidebar-list::-webkit-scrollbar-thumb {
+      background: rgba(148, 197, 255, 0.24);
+      border-radius: 4px;
+    }
+
+    .group-label {
+      font-size: 10.5px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      padding: 8px 8px 4px;
+      text-transform: uppercase;
+    }
+
+    .org-item {
+      width: 100%;
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-primary);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 10px;
+      border-radius: 11px;
+      cursor: pointer;
+      text-align: left;
+      transition: all 0.16s ease;
+      font-family: inherit;
+      margin-bottom: 2px;
+    }
+
+    .org-item:hover {
+      background: rgba(148, 197, 255, 0.09);
+      border-color: rgba(148, 197, 255, 0.16);
+    }
+
+    .org-item.active {
+      background: linear-gradient(90deg, rgba(56, 189, 248, 0.18), rgba(56, 189, 248, 0.06));
+      border-color: var(--accent);
+      box-shadow: inset 0 0 0 1px var(--accent-glow);
+    }
+
+    body.mode-plant .org-item.active {
+      background: linear-gradient(90deg, rgba(52, 211, 153, 0.18), rgba(52, 211, 153, 0.06));
+    }
+
+    .org-swatch {
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      box-shadow: 0 0 10px currentColor;
+    }
+
+    .org-item-text {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .org-item-name {
+      font-size: 13px;
+      font-weight: 600;
+      line-height: 1.25;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .org-item-en {
+      font-size: 10.5px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .org-tag {
+      font-size: 10px;
+      font-weight: 700;
+      padding: 2px 6px;
+      border-radius: 6px;
+      flex-shrink: 0;
+    }
+
+    .org-tag.unique-animal {
+      background: rgba(56, 189, 248, 0.18);
+      color: #7dd3fc;
+      border: 1px solid rgba(56, 189, 248, 0.35);
+    }
+
+    .org-tag.unique-plant {
+      background: rgba(52, 211, 153, 0.18);
+      color: #6ee7b7;
+      border: 1px solid rgba(52, 211, 153, 0.35);
+    }
+
+    #reopen-sidebar-btn {
+      position: fixed;
+      top: 84px;
+      left: 16px;
+      z-index: 21;
+      display: none;
+    }
+
+    #reopen-sidebar-btn.visible {
+      display: inline-flex;
+    }
+
+    /* Right Info Inspector Panel */
+    .info-panel {
+      position: fixed;
+      top: 80px;
+      right: 16px;
+      bottom: 84px;
+      width: 344px;
+      z-index: 22;
+      display: flex;
+      flex-direction: column;
+      border-radius: var(--radius-lg);
+      background: var(--glass-strong);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      box-shadow: var(--shadow-panel);
+      overflow: hidden;
+      transition: transform 0.28s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.25s ease;
+    }
+
+    .info-panel.collapsed {
+      transform: translateX(370px);
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .info-header {
+      padding: 16px 16px 13px;
+      border-bottom: 1px solid rgba(148, 197, 255, 0.12);
+      position: relative;
+    }
+
+    .info-header-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .info-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .info-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      flex-shrink: 0;
+      box-shadow: 0 0 14px currentColor;
+    }
+
+    .info-title {
+      font-size: 18px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+
+    .info-en {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+
+    .info-badges {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 10px;
+    }
+
+    .meta-badge {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 9px;
+      border-radius: 999px;
+      background: rgba(148, 197, 255, 0.12);
+      border: 1px solid rgba(148, 197, 255, 0.22);
+      color: #cfe6ff;
+    }
+
+    .meta-badge.special-animal {
+      background: rgba(56, 189, 248, 0.18);
+      border-color: rgba(56, 189, 248, 0.42);
+      color: #7dd3fc;
+    }
+
+    .meta-badge.special-plant {
+      background: rgba(52, 211, 153, 0.18);
+      border-color: rgba(52, 211, 153, 0.42);
+      color: #6ee7b7;
+    }
+
+    .info-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 14px 16px 16px;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(148, 197, 255, 0.25) transparent;
+    }
+
+    .info-body::-webkit-scrollbar {
+      width: 5px;
+    }
+
+    .info-body::-webkit-scrollbar-thumb {
+      background: rgba(148, 197, 255, 0.24);
+      border-radius: 4px;
+    }
+
+    .info-summary {
+      font-size: 13.5px;
+      line-height: 1.65;
+      color: #d6e6f8;
+      margin-bottom: 14px;
+    }
+
+    .section-card {
+      background: rgba(255, 255, 255, 0.035);
+      border: 1px solid rgba(148, 197, 255, 0.11);
+      border-radius: var(--radius-md);
+      padding: 12px 13px;
+      margin-bottom: 11px;
+    }
+
+    .section-card h3 {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--accent);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      letter-spacing: 0.02em;
+    }
+
+    .anatomy-list,
+    .func-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+    }
+
+    .anatomy-list li {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      font-size: 12.8px;
+      line-height: 1.52;
+      color: #dceafc;
+    }
+
+    .part-swatch {
+      width: 9px;
+      height: 9px;
+      border-radius: 3px;
+      margin-top: 5px;
+      flex-shrink: 0;
+      box-shadow: 0 0 6px currentColor;
+    }
+
+    .func-list li {
+      position: relative;
+      padding-left: 14px;
+      font-size: 12.8px;
+      line-height: 1.55;
+      color: #d4e4f7;
+    }
+
+    .func-list li::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 8px;
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--accent);
+    }
+
+    .tip-box {
+      padding: 10px 12px;
+      border-radius: 11px;
+      background: linear-gradient(135deg, rgba(56, 189, 248, 0.12), rgba(52, 211, 153, 0.08));
+      border: 1px solid rgba(148, 197, 255, 0.22);
+      font-size: 12.5px;
+      line-height: 1.55;
+      color: #e4f2ff;
+    }
+
+    .tip-box strong {
+      color: var(--accent);
+    }
+
+    .info-footer {
+      padding: 12px 14px;
+      border-top: 1px solid rgba(148, 197, 255, 0.12);
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      background: rgba(6, 14, 26, 0.55);
+    }
+
+    .primary-cta {
+      width: 100%;
+      border: none;
+      padding: 10px 14px;
+      border-radius: 11px;
+      background: linear-gradient(135deg, var(--accent), #60a5fa);
+      color: #041525;
+      font-size: 13.5px;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      font-family: inherit;
+      box-shadow: 0 6px 20px var(--accent-glow);
+      transition: all 0.18s ease;
+    }
+
+    body.mode-plant .primary-cta {
+      background: linear-gradient(135deg, #34d399, #2dd4bf);
+      color: #032016;
+    }
+
+    .primary-cta:hover {
+      filter: brightness(1.08);
+      transform: translateY(-1px);
+    }
+
+    .primary-cta.active-iso {
+      background: linear-gradient(135deg, #f59e0b, #fb923c);
+      color: #241202;
+      box-shadow: 0 6px 20px rgba(245, 158, 11, 0.35);
+    }
+
+    .nav-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .sec-btn {
+      border: 1px solid rgba(148, 197, 255, 0.2);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-primary);
+      padding: 7px 10px;
+      border-radius: 9px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.16s ease;
+    }
+
+    .sec-btn:hover {
+      background: rgba(255, 255, 255, 0.11);
+      border-color: rgba(148, 197, 255, 0.36);
+    }
+
+    #reopen-info-btn {
+      position: fixed;
+      top: 84px;
+      right: 16px;
+      z-index: 21;
+      display: none;
+    }
+
+    #reopen-info-btn.visible {
+      display: inline-flex;
+    }
+
+    /* Overview stats grid inside info panel */
+    .overview-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .stat-tile {
+      padding: 10px 11px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(148, 197, 255, 0.12);
+    }
+
+    .stat-tile .k {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .stat-tile .v {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-top: 3px;
+    }
+
+    .gesture-hint {
+      display: flex;
+      flex-direction: column;
+      gap: 5px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Bottom Floating Dock */
+    .bottom-dock {
+      position: fixed;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 25;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 16px;
+      background: var(--glass);
+      border: 1px solid var(--glass-border);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      box-shadow: var(--shadow-panel);
+      max-width: calc(100vw - 24px);
+      overflow-x: auto;
+    }
+
+    .dock-btn {
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-secondary);
+      padding: 7px 11px;
+      border-radius: 10px;
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      transition: all 0.16s ease;
+      font-family: inherit;
+    }
+
+    .dock-btn:hover {
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+    }
+
+    .dock-btn.active {
+      background: rgba(56, 189, 248, 0.16);
+      border-color: rgba(56, 189, 248, 0.42);
+      color: #e6f6ff;
+    }
+
+    body.mode-plant .dock-btn.active {
+      background: rgba(52, 211, 153, 0.16);
+      border-color: rgba(52, 211, 153, 0.42);
+      color: #e6fff5;
+    }
+
+    .dock-divider {
+      width: 1px;
+      height: 22px;
+      background: rgba(148, 197, 255, 0.18);
+      margin: 0 2px;
+      flex-shrink: 0;
+    }
+
+    .explode-wrap {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 4px 10px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(148, 197, 255, 0.12);
+    }
+
+    .explode-wrap label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+
+    .explode-wrap input[type="range"] {
+      width: 86px;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+
+    /* Comparison Modal */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: rgba(2, 8, 16, 0.74);
+      backdrop-filter: blur(8px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.22s ease;
+    }
+
+    .modal-backdrop.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+
+    .modal-card {
+      width: 100%;
+      max-width: 780px;
+      max-height: 86vh;
+      display: flex;
+      flex-direction: column;
+      border-radius: 20px;
+      background: rgba(10, 21, 37, 0.96);
+      border: 1px solid rgba(148, 197, 255, 0.24);
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.7);
+      overflow: hidden;
+      transform: scale(0.96);
+      transition: transform 0.22s ease;
+    }
+
+    .modal-backdrop.open .modal-card {
+      transform: scale(1);
+    }
+
+    .modal-head {
+      padding: 16px 20px;
+      border-bottom: 1px solid rgba(148, 197, 255, 0.14);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .modal-head h2 {
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    .modal-body {
+      padding: 16px 20px 20px;
+      overflow-y: auto;
+    }
+
+    .compare-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    .compare-table th,
+    .compare-table td {
+      padding: 10px 12px;
+      text-align: left;
+      border-bottom: 1px solid rgba(148, 197, 255, 0.11);
+      vertical-align: top;
+      line-height: 1.5;
+    }
+
+    .compare-table th {
+      font-size: 12.5px;
+      font-weight: 700;
+      color: var(--text-secondary);
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .compare-table th.col-animal {
+      color: #7dd3fc;
+    }
+
+    .compare-table th.col-plant {
+      color: #6ee7b7;
+    }
+
+    .yes-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 600;
+      background: rgba(52, 211, 153, 0.16);
+      color: #6ee7b7;
+    }
+
+    .no-pill {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11.5px;
+      font-weight: 600;
+      background: rgba(248, 113, 113, 0.14);
+      color: #fca5a5;
+    }
+
+    .jump-chip {
+      display: inline-block;
+      margin-top: 4px;
+      margin-right: 4px;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11px;
+      font-weight: 600;
+      background: rgba(148, 197, 255, 0.12);
+      border: 1px solid rgba(148, 197, 255, 0.24);
+      color: #d7ecff;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .jump-chip:hover {
+      background: rgba(56, 189, 248, 0.25);
+      border-color: #38bdf8;
+    }
+
+    /* Loading Overlay */
+    #loading-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 100;
+      background: radial-gradient(circle at 50% 45%, #102740 0%, #06101c 70%);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 16px;
+      transition: opacity 0.45s ease;
+    }
+
+    #loading-overlay.fade-out {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .spinner {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      border: 3px solid rgba(56, 189, 248, 0.18);
+      border-top-color: #38bdf8;
+      border-right-color: #34d399;
+      animation: spin 0.9s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    #loading-msg {
+      font-size: 14px;
+      color: var(--text-secondary);
+      text-align: center;
+      max-width: 340px;
+      line-height: 1.5;
+    }
+
+    /* Responsive layout */
+    @media (max-width: 1024px) {
+      .sidebar {
+        width: 232px;
+      }
+      .info-panel {
+        width: 300px;
+      }
+      .brand-sub {
+        display: none;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .top-bar {
+        flex-wrap: wrap;
+        top: 10px;
+        left: 10px;
+        right: 10px;
+        gap: 8px;
+      }
+      .brand {
+        display: none;
+      }
+      .cell-switcher {
+        flex: 1;
+        justify-content: center;
+      }
+      .switch-btn {
+        padding: 7px 12px;
+        font-size: 12.5px;
+      }
+      .sidebar {
+        top: 66px;
+        left: 10px;
+        bottom: 76px;
+        width: min(260px, 76vw);
+      }
+      .info-panel {
+        top: auto;
+        left: 10px;
+        right: 10px;
+        bottom: 72px;
+        width: auto;
+        max-height: 46vh;
+      }
+      .info-panel.collapsed {
+        transform: translateY(115%);
+      }
+      .bottom-dock {
+        bottom: 10px;
+        padding: 5px 8px;
+      }
+      .explode-wrap input[type="range"] {
+        width: 64px;
+      }
+    }
+  </style>
+</head>
+<body class="mode-animal">
+  <!-- Loading Screen -->
+  <div id="loading-overlay">
+    <div class="spinner"></div>
+    <div id="loading-msg">正在构建高精度 3D 细胞器模型…</div>
+  </div>
+
+  <!-- 3D WebGL Viewport -->
+  <div id="stage">
+    <canvas id="webgl-canvas"></canvas>
+    <div id="labels-layer"></div>
+  </div>
+
+  <!-- Hover Tooltip -->
+  <div id="hover-tip"></div>
+
+  <!-- Top Bar -->
+  <header class="top-bar">
+    <div class="brand">
+      <div class="brand-icon" aria-hidden="true">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <circle cx="12" cy="12" r="9.5" stroke="#031926" stroke-width="2.1"/>
+          <circle cx="10.5" cy="11" r="3.4" fill="#031926"/>
+          <ellipse cx="16.4" cy="15.2" rx="2.4" ry="1.3" transform="rotate(-28 16.4 15.2)" fill="#031926"/>
+        </svg>
+      </div>
+      <div>
+        <div class="brand-title">细胞 3D 结构探索</div>
+        <div class="brand-sub">Interactive 3D Biological Cell Atlas</div>
+      </div>
+    </div>
+
+    <div class="cell-switcher" role="tablist" aria-label="切换细胞类型">
+      <button class="switch-btn active" data-cell="animal" role="tab" aria-selected="true">
+        <span>🧬</span> 动物细胞
+      </button>
+      <button class="switch-btn" data-cell="plant" role="tab" aria-selected="false">
+        <span>🌿</span> 高等植物细胞
+      </button>
+    </div>
+
+    <div class="top-actions">
+      <button class="pill-btn" id="btn-compare" title="对比动物细胞与高等植物细胞">
+        <span>⚖️</span> 动植物对比
+      </button>
+    </div>
+  </header>
+
+  <!-- Isolate Mode Banner -->
+  <div id="isolate-banner" aria-live="polite">
+    <div class="iso-text">独立特写模式：<strong id="iso-name">细胞核</strong> · 拖动可 360° 观察内部立体结构</div>
+    <button class="iso-exit" id="btn-exit-isolate">返回完整细胞</button>
+  </div>
+
+  <!-- Left Organelle Directory -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-header">
+      <h2>细胞结构目录 <span class="count-badge" id="org-count">11</span></h2>
+      <button class="icon-btn" id="btn-close-sidebar" title="收起目录">✕</button>
+    </div>
+    <div class="sidebar-list" id="sidebar-list"></div>
+  </aside>
+
+  <button class="pill-btn" id="reopen-sidebar-btn">☰ 结构目录</button>
+
+  <!-- Right Organelle Inspector Panel -->
+  <aside class="info-panel" id="info-panel">
+    <div class="info-header">
+      <div class="info-header-top">
+        <div class="info-title-wrap">
+          <span class="info-dot" id="info-dot"></span>
+          <div>
+            <div class="info-title" id="info-title">动物细胞</div>
+            <div class="info-en" id="info-en">Animal Cell</div>
+          </div>
+        </div>
+        <button class="icon-btn" id="btn-close-info" title="收起详情">✕</button>
+      </div>
+      <div class="info-badges" id="info-badges"></div>
+    </div>
+    <div class="info-body" id="info-body"></div>
+    <div class="info-footer" id="info-footer"></div>
+  </aside>
+
+  <button class="pill-btn" id="reopen-info-btn">📖 结构详情</button>
+
+  <!-- Bottom Control Dock -->
+  <div class="bottom-dock" role="toolbar" aria-label="模型控制栏">
+    <button class="dock-btn active" id="btn-labels" title="显示或隐藏 3D 标注">🏷️ 3D 标注</button>
+    <div class="explode-wrap" title="将各细胞器向外爆炸展开，便于无遮挡观察">
+      <label for="explode-slider">💥 展开</label>
+      <input id="explode-slider" type="range" min="0" max="100" value="0" />
+    </div>
+    <button class="dock-btn" id="btn-ghost" title="切换细胞膜/细胞壁半透明通透视图">🫧 透明外壳</button>
+    <button class="dock-btn" id="btn-autorotate" title="开启或暂停自动旋转">🔄 自动旋转</button>
+    <div class="dock-divider"></div>
+    <button class="dock-btn" id="btn-reset" title="重置视角与展开状态">🎯 重置视角</button>
+  </div>
+
+  <!-- Comparison Modal -->
+  <div class="modal-backdrop" id="compare-modal" role="dialog" aria-modal="true" aria-labelledby="compare-title">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h2 id="compare-title">⚖️ 动物细胞 vs 高等植物细胞 核心区别对比</h2>
+        <button class="icon-btn" id="btn-close-modal" title="关闭">✕</button>
+      </div>
+      <div class="modal-body">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th style="width: 22%;">对比维度</th>
+              <th class="col-animal" style="width: 39%;">🧬 动物细胞 (Animal Cell)</th>
+              <th class="col-plant" style="width: 39%;">🌿 高等植物细胞 (Higher Plant Cell)</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>外形与边界</strong></td>
+              <td>无细胞壁，呈圆润不规则球形或椭球形，外层由柔韧的细胞膜包裹。</td>
+              <td>具坚韧的<strong>细胞壁</strong>（纤维素、果胶），常呈规则多面体/六棱柱形，有<strong>胞间连丝</strong>。<br/><button class="jump-chip" data-jump-cell="plant" data-jump-org="cellWall">查看细胞壁 →</button></td>
+            </tr>
+            <tr>
+              <td><strong>叶绿体</strong></td>
+              <td><span class="no-pill">无</span> 异养型，不能进行光合作用。</td>
+              <td><span class="yes-pill">特有</span> 含叶绿素与基粒类囊体，是光合作用的场所。<br/><button class="jump-chip" data-jump-cell="plant" data-jump-org="chloroplast">查看叶绿体 →</button></td>
+            </tr>
+            <tr>
+              <td><strong>中央大液泡</strong></td>
+              <td><span class="no-pill">无</span> 仅含少量小囊泡。</td>
+              <td><span class="yes-pill">特有</span> 成熟细胞内占体积很大，调节渗透压、维持细胞坚挺。<br/><button class="jump-chip" data-jump-cell="plant" data-jump-org="vacuole">查看大液泡 →</button></td>
+            </tr>
+            <tr>
+              <td><strong>中心体</strong></td>
+              <td><span class="yes-pill">有（典型）</span> 含一对互相垂直的中心粒，参与有丝分裂纺锤体形成。<br/><button class="jump-chip" data-jump-cell="animal" data-jump-org="centrosome">查看中心体 →</button></td>
+              <td><span class="no-pill">无</span> 高等植物细胞不含中心体（低等植物细胞才有）。</td>
+            </tr>
+            <tr>
+              <td><strong>溶酶体</strong></td>
+              <td><span class="yes-pill">典型存在</span> 含多种酸性水解酶，负责胞内消化与清除衰老细胞器。<br/><button class="jump-chip" data-jump-cell="animal" data-jump-org="lysosome">查看溶酶体 →</button></td>
+              <td>通常无典型溶酶体，相关水解降解功能主要由<strong>中央大液泡</strong>承担。</td>
+            </tr>
+            <tr>
+              <td><strong>细胞核位置</strong></td>
+              <td>通常位于细胞中央偏中位置。<br/><button class="jump-chip" data-jump-cell="animal" data-jump-org="nucleus">查看动物细胞核 →</button></td>
+              <td>常被中央大液泡挤向细胞一侧边缘。<br/><button class="jump-chip" data-jump-cell="plant" data-jump-org="nucleus">查看植物细胞核 →</button></td>
+            </tr>
+            <tr>
+              <td><strong>共有核心细胞器</strong></td>
+              <td colspan="2">两者均具有 <strong>细胞膜、细胞质基质与细胞骨架、细胞核、线粒体、粗面内质网、滑面内质网、高尔基体、核糖体、过氧化物酶体</strong>（植物高尔基体还额外参与细胞分裂时细胞壁的合成）。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script type="module">
+    /* =========================================================================
+       1. Resilient Multi-CDN Three.js Loader (works on GitHub Pages & locally)
+       ========================================================================= */
+    const THREE_CDNS = [
+      'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.min.js',
+      'https://unpkg.com/three@0.160.0/build/three.module.min.js',
+      'https://cdnjs.cloudflare.com/ajax/libs/three.js/0.160.0/three.module.min.js',
+      'https://esm.sh/three@0.160.0'
+    ];
+
+    async function loadThree() {
+      let lastErr = null;
+      for (const url of THREE_CDNS) {
+        try {
+          const mod = await import(url);
+          if (mod && mod.Scene && mod.WebGLRenderer) return mod;
+        } catch (err) {
+          lastErr = err;
+        }
+      }
+      throw lastErr || new Error('无法加载 Three.js 3D 渲染引擎，请检查网络连接后刷新页面。');
+    }
+
+    let THREE;
+    try {
+      THREE = await loadThree();
+    } catch (err) {
+      document.getElementById('loading-msg').innerHTML =
+        '⚠️ 无法加载 3D 引擎（Three.js）。<br/>请确认网络连接正常后刷新重试。<br/><small style="opacity:.7">' +
+        String(err.message || err) + '</small>';
+      throw err;
+    }
+
+    /* =========================================================================
+       2. Biological Knowledge Database (Accurate High-School / Univ. Cell Bio)
+       ========================================================================= */
+    const CELL_OVERVIEW = {
+      animal: {
+        name: '动物细胞',
+        en: 'Animal Cell (Eukaryotic)',
+        color: '#38bdf8',
+        badges: ['真核细胞', '异养型', '无细胞壁'],
+        summary: '动物细胞是最典型的真核细胞之一，无细胞壁、形态柔韧多变，内部具有高度分工的膜系统与细胞器。本 3D 模型采用开放式解剖切面设计，点击任意细胞器即可聚焦或开启“独立特写”360°观察内部细微结构。',
+        stats: [
+          { k: '典型外形', v: '圆润 / 不规则球形' },
+          { k: '核心特征', v: '含中心体、典型溶酶体' },
+          { k: '细胞边界', v: '磷脂双分子层细胞膜' },
+          { k: '可观察结构', v: '11 类主要立体结构' }
+        ],
+        tip: '提示：尝试拖动下方「爆炸展开」滑块，或点击左侧任一细胞器后进入「独立特写观察」，查看线粒体嵴、中心粒 9×3 微管、核孔等精细解剖结构！'
+      },
+      plant: {
+        name: '高等植物细胞',
+        en: 'Higher Plant Cell (Eukaryotic)',
+        color: '#34d399',
+        badges: ['真核细胞', '自养型', '具细胞壁 / 叶绿体 / 大液泡'],
+        summary: '高等植物细胞外有坚韧的纤维素细胞壁支撑，常呈多面体柱状；成熟细胞内部由巨大的中央大液泡占据显著空间，将细胞核与叶绿体等推向细胞边缘，且不含中心体。',
+        stats: [
+          { k: '典型外形', v: '规则多面体 / 六棱柱' },
+          { k: '特有结构', v: '细胞壁、叶绿体、大液泡' },
+          { k: '显著区别', v: '无中心体与典型溶酶体' },
+          { k: '可观察结构', v: '12 类主要立体结构' }
+        ],
+        tip: '提示：注意观察叶绿体剖面中堆叠如硬币的「基粒类囊体」、细胞壁上的「胞间连丝」通道，以及被大液泡推向一侧的细胞核！'
+      }
+    };
+
+    const ORGANELLES = {
+      cellWall: {
+        id: 'cellWall',
+        name: '细胞壁与胞间连丝',
+        en: 'Cell Wall & Plasmodesmata',
+        group: '细胞边界与基质',
+        color: '#2d9d67',
+        membrane: '非膜保护结构',
+        unique: 'plant',
+        summary: '位于高等植物细胞最外层的坚韧全透性外框，主要由纤维素微纤丝与果胶交织而成，赋予植物细胞规则多面体形态，并通过胞间连丝实现相邻细胞间的物质与信息交流。',
+        anatomy: [
+          { color: '#2d7a55', text: '初生壁（深绿厚层）：由纵横交错的纤维素微纤丝构成坚固支架。' },
+          { color: '#84cc16', text: '胞间层 / 果胶层（外缘亮绿线）：粘合相邻植物细胞的果胶层。' },
+          { color: '#facc15', text: '胞间连丝（金色穿壁通道）：贯通细胞壁的微小细胞质通道。' }
+        ],
+        functions: [
+          '提供机械支持与外部保护，防止植物细胞在低渗环境中吸水涨破。',
+          '维持植物细胞稳定的多面体形态。',
+          '通过胞间连丝在相邻细胞之间直接传递水分、离子与信号分子。'
+        ],
+        tip: '细胞壁具有全透性，真正控制物质进出细胞的是紧贴其内侧的细胞膜。',
+        subLabels: [
+          { pos: [0, 1.45, -1.65], text: '初生壁（纤维素层）', color: '#34d399' },
+          { pos: [1.85, 0.25, -0.95], text: '胞间层（外缘果胶）', color: '#a3e635' },
+          { pos: [-1.75, 0.55, -0.75], text: '胞间连丝通道', color: '#facc15' }
+        ]
+      },
+      membrane: {
+        id: 'membrane',
+        name: '细胞膜',
+        en: 'Plasma Membrane',
+        group: '细胞边界与基质',
+        color: '#f59e0b',
+        membrane: '磷脂双分子层',
+        unique: null,
+        summary: '包裹在整个细胞外周的选择透过性生物膜，以流动镶嵌模型为基本结构：磷脂双分子层构成基本骨架，多种膜蛋白与糖蛋白镶嵌、贯穿其中。',
+        anatomy: [
+          { color: '#fbbf24', text: '磷脂双分子层（切面双层金边）：亲水头部朝外、疏水尾部相对。' },
+          { color: '#38bdf8', text: '跨膜通道蛋白（蓝色柱状）：负责离子与极性小分子的跨膜运输。' },
+          { color: '#fb7185', text: '糖蛋白 / 糖被（珊瑚红触角）：位于膜外侧，负责细胞识别与信号接收。' }
+        ],
+        functions: [
+          '将细胞与外界环境分隔开，保障内部稳态。',
+          '具有选择透过性，精确控制营养物质进入与代谢废物排出。',
+          '介导细胞间信息交流（如受体结合激素分子）。'
+        ],
+        tip: '动物细胞膜直接暴露于最外层；高等植物细胞膜紧贴在细胞壁内侧。',
+        subLabels: [
+          { pos: [1.55, 0.28, 0.85], text: '磷脂双分子层切面', color: '#fbbf24' },
+          { pos: [-1.45, 0.45, 1.15], text: '跨膜通道蛋白', color: '#38bdf8' },
+          { pos: [0.35, 0.65, 1.72], text: '外侧糖蛋白（细胞识别）', color: '#fb7185' }
+        ]
+      },
+      cytoplasm: {
+        id: 'cytoplasm',
+        name: '细胞质基质与细胞骨架',
+        en: 'Cytoplasm & Cytoskeleton',
+        group: '细胞边界与基质',
+        color: '#67e8f9',
+        membrane: '胞内胶质与蛋白纤维网',
+        unique: null,
+        summary: '填充在细胞膜与细胞核之间的胶体状水相基质，内部遍布由微管与微丝组成的蛋白质纤维网架（细胞骨架），支撑细胞形态并充当胞内运输“轨道”。',
+        anatomy: [
+          { color: '#38bdf8', text: '细胞质基质（半透明基底）：富含水、无机盐、多种酶与代谢底物。' },
+          { color: '#2dd4bf', text: '微管（青色较粗纤维）：由微管蛋白构成，引导囊泡与细胞器定向移动。' },
+          { color: '#e2e8f0', text: '微丝（浅白纤细丝网）：由肌动蛋白构成，参与细胞变形与胞质环流。' }
+        ],
+        functions: [
+          '是细胞新陈代谢（如糖酵解）的重要反应场所。',
+          '细胞骨架维持细胞形态、锚定并支撑各类细胞器。',
+          '驱动细胞运动、细胞分裂及胞内囊泡的定向转运。'
+        ],
+        tip: '细胞器并非杂乱飘浮，而是依托细胞骨架有序排布并沿“蛋白轨道”运输物质。',
+        subLabels: [
+          { pos: [1.25, 0.25, 0.85], text: '微管（囊泡运输轨道）', color: '#2dd4bf' },
+          { pos: [-1.25, 0.45, 0.65], text: '微丝（肌动蛋白丝）', color: '#e2e8f0' },
+          { pos: [0.0, -0.55, 1.35], text: '细胞质基质', color: '#38bdf8' }
+        ]
+      },
+      nucleus: {
+        id: 'nucleus',
+        name: '细胞核',
+        en: 'Nucleus',
+        group: '遗传与调控中心',
+        color: '#a855f7',
+        membrane: '双层核膜',
+        unique: null,
+        summary: '真核细胞最大的结构，是遗传信息库与细胞代谢、遗传的控制中心。本模型以 1/8 剖面切口清晰呈现双层核膜、表面核孔、内部染色质丝与致密核仁。',
+        anatomy: [
+          { color: '#9333ea', text: '双层核膜（紫罗兰双层外壳）：将核内遗传物质与细胞质分隔。' },
+          { color: '#e9d5ff', text: '核孔复合体（表面环状小孔）：RNA 与蛋白质进出细胞核的选择通道。' },
+          { color: '#f43f5e', text: '核仁（中央玫红致密球体）：合成 rRNA 及装配核糖体亚基的场所。' },
+          { color: '#f0abfc', text: '染色质（盘绕细丝）：DNA 与组蛋白结合形成，分裂期高度螺旋化为染色体。' }
+        ],
+        functions: [
+          '储存绝大多数遗传物质（DNA），调控基因复制与转录。',
+          '控制细胞的生长、发育、代谢与增殖分化。',
+          '通过核仁组装核糖体亚基，经核孔输出至细胞质。'
+        ],
+        tip: '动物细胞核通常居于中央；高等植物细胞核常被中央大液泡挤向细胞一侧。',
+        subLabels: [
+          { pos: [0.0, 0.05, 0.0], text: '核仁（装配核糖体）', color: '#fb7185' },
+          { pos: [0.85, 0.65, 0.65], text: '染色质（DNA+蛋白质）', color: '#f0abfc' },
+          { pos: [1.38, -0.15, 0.88], text: '双层核膜切面', color: '#c084fc' },
+          { pos: [-1.15, 1.12, 0.72], text: '核孔复合体', color: '#e9d5ff' }
+        ]
+      },
+      mitochondrion: {
+        id: 'mitochondrion',
+        name: '线粒体',
+        en: 'Mitochondrion',
+        group: '双层膜细胞器',
+        color: '#f97316',
+        membrane: '双层膜',
+        unique: null,
+        summary: '呈花生或棒状的“细胞动力车间”，是有氧呼吸的主要场所。剖面清晰可见光滑外膜、向内高度折叠形成“嵴”的内膜，以及线粒体基质与环状 DNA。',
+        anatomy: [
+          { color: '#dc2626', text: '外膜（深红光滑外壳）：包裹整个线粒体，通透性较高。' },
+          { color: '#fb923c', text: '内膜与嵴（橙金蛇形折褶）：大幅增加内膜面积，附着氧化磷酸化酶系。' },
+          { color: '#fde68a', text: '线粒体基质（内部腔室）：含三羧酸循环所需酶系。' },
+          { color: '#38bdf8', text: '线粒体环状 DNA（蓝色微环）：具有半自主复制与表达能力。' }
+        ],
+        functions: [
+          '进行有氧呼吸第二、三阶段，将有机物化学能高效转化为 ATP。',
+          '为细胞绝大多数生命活动提供直接能量来源。',
+          '参与细胞钙离子稳态调节与细胞凋亡信号通路。'
+        ],
+        tip: '代谢旺盛的细胞（如心肌细胞）含线粒体极多；内膜向内折叠成「嵴」是结构适应功能的经典范例。',
+        subLabels: [
+          { pos: [-1.45, -0.25, 0.75], text: '光滑外膜', color: '#f87171' },
+          { pos: [0.15, 0.35, 0.15], text: '内膜折叠形成的「嵴」', color: '#fb923c' },
+          { pos: [0.95, 0.18, 0.32], text: '线粒体基质', color: '#fde68a' },
+          { pos: [-0.65, 0.22, -0.15], text: '线粒体环状 DNA', color: '#38bdf8' }
+        ]
+      },
+      chloroplast: {
+        id: 'chloroplast',
+        name: '叶绿体',
+        en: 'Chloroplast',
+        group: '双层膜细胞器',
+        color: '#22c55e',
+        membrane: '双层膜',
+        unique: 'plant',
+        summary: '高等植物绿色组织细胞特有的双凸透镜状细胞器，被称为“养料制造车间”和“能量转换站”。剖面清晰展示硬币状堆叠的类囊体基粒与连接片层。',
+        anatomy: [
+          { color: '#15803d', text: '外膜与内膜（深绿双层边界）：控制代谢产物进出叶绿体。' },
+          { color: '#4ade80', text: '基粒与类囊体（翠绿硬币状堆叠）：膜上分布叶绿素与光反应酶系。' },
+          { color: '#86efac', text: '基质片层（连接桥片）：将相邻基粒连通成完整膜网络。' },
+          { color: '#f8fafc', text: '叶绿体基质与淀粉粒（浅绿腔与白粒）：暗反应（卡尔文循环）场所并暂存淀粉。' }
+        ],
+        functions: [
+          '捕获太阳光能，在类囊体薄膜上进行光反应，产生 ATP、NADPH 并释放氧气。',
+          '在叶绿体基质中进行碳反应（暗反应），将 CO₂ 固定并合成葡萄糖与淀粉。',
+          '含自身环状 DNA 与核糖体，属于半自主性细胞器。'
+        ],
+        tip: '并非所有植物细胞都含叶绿体（如植物根尖细胞无叶绿体），主要分布于叶肉细胞与幼茎表皮细胞中。',
+        subLabels: [
+          { pos: [-1.45, -0.18, 0.85], text: '双层包膜', color: '#22c55e' },
+          { pos: [-0.35, 0.55, 0.18], text: '基粒（类囊体堆叠）', color: '#4ade80' },
+          { pos: [0.45, 0.32, -0.15], text: '基质片层', color: '#86efac' },
+          { pos: [1.05, 0.25, 0.45], text: '淀粉粒与叶绿体基质', color: '#f8fafc' }
+        ]
+      },
+      roughER: {
+        id: 'roughER',
+        name: '粗面内质网',
+        en: 'Rough Endoplasmic Reticulum (RER)',
+        group: '单层膜细胞器',
+        color: '#3b82f6',
+        membrane: '单层膜（扁平囊）',
+        unique: null,
+        summary: '紧邻并连通核膜外层的层叠扁平囊状单层膜系统，外表面密布大量附着核糖体，是分泌蛋白、膜蛋白合成与初步折叠加工的核心工坊。',
+        anatomy: [
+          { color: '#2563eb', text: '层叠扁平囊（深蓝弧形膜片）：多层同心折叠，增大内部加工面积。' },
+          { color: '#60a5fa', text: '内质网腔（囊内蓝亮空间）：新合成多肽链在此折叠、糖基化修饰。' },
+          { color: '#fbbf24', text: '附着核糖体（表面金色颗粒）：将合成的多肽直接送入内质网腔。' }
+        ],
+        functions: [
+          '协助附着核糖体合成分泌蛋白、溶酶体酶与细胞膜蛋白。',
+          '对新生肽链进行正确折叠、二硫键形成及初步糖基化修饰。',
+          '出芽形成运输囊泡，将合格蛋白送往高尔基体进一步加工。'
+        ],
+        tip: '粗面内质网外膜直接与细胞核外膜相连，便于 mRNA 出核孔后迅速被翻译。',
+        subLabels: [
+          { pos: [0.95, 0.72, 0.72], text: '扁平囊膜结构', color: '#60a5fa' },
+          { pos: [-0.85, 0.35, 0.95], text: '表面附着核糖体', color: '#fbbf24' },
+          { pos: [0.15, -0.45, 1.05], text: '内质网腔道', color: '#93c5fd' }
+        ]
+      },
+      smoothER: {
+        id: 'smoothER',
+        name: '滑面内质网',
+        en: 'Smooth Endoplasmic Reticulum (SER)',
+        group: '单层膜细胞器',
+        color: '#06b6d4',
+        membrane: '单层膜（管状网）',
+        unique: null,
+        summary: '常与粗面内质网相连、表面光滑无核糖体附着的分支管状膜网络，专司脂质合成、固醇类激素生成、解毒以及钙离子储存。',
+        anatomy: [
+          { color: '#06b6d4', text: '分支管状膜网络（青蓝圆管）：彼此互通形成珊瑚状立体管道系统。' },
+          { color: '#67e8f9', text: '光滑膜表面：无核糖体附着，膜上镶嵌脂质合成与解毒酶系。' }
+        ],
+        functions: [
+          '合成磷脂、胆固醇及性激素等各类脂质分子（脂质合成车间）。',
+          '在肝细胞中参与药物、毒物代谢解毒（细胞色素 P450 酶系）。',
+          '储存并快速释放 Ca²⁺（肌细胞中的肌质网即特化滑面内质网）。'
+        ],
+        tip: '对比旁边的粗面内质网：粗面呈「带颗粒的扁平片层」，滑面呈「光滑的分支管网」。',
+        subLabels: [
+          { pos: [0.75, 0.85, 0.35], text: '光滑管状膜（无核糖体）', color: '#22d3ee' },
+          { pos: [-0.75, -0.25, 0.65], text: '分支互通管道节点', color: '#67e8f9' }
+        ]
+      },
+      golgi: {
+        id: 'golgi',
+        name: '高尔基体',
+        en: 'Golgi Apparatus',
+        group: '单层膜细胞器',
+        color: '#f59e0b',
+        membrane: '单层膜（堆叠扁平囊）',
+        unique: null,
+        summary: '由数层弧形扁平囊叠合而成、边缘膨大并不断出芽形成大小囊泡的“细胞分拣与包装中心”，具有明显的极性（顺面接收、反面分泌）。',
+        anatomy: [
+          { color: '#d97706', text: '顺面扁平囊（朝向内质网）：接收来自内质网的运输囊泡。' },
+          { color: '#fbbf24', text: '中间与反面扁平囊（弧形叠层）：对蛋白质与脂质进行深加工、糖基修饰。' },
+          { color: '#fed7aa', text: '出芽分泌囊泡（边缘球状小泡）：包裹成熟产物定向运往细胞膜或溶酶体。' }
+        ],
+        functions: [
+          '对来自内质网的蛋白质进行加工、分类、包装并贴上“分子地址标签”。',
+          '形成分泌囊泡完成胞吐分泌，并更新细胞膜成分。',
+          '在植物细胞有丝分裂末期，额外负责合成多糖并参与细胞壁（细胞板）形成！'
+        ],
+        tip: '高尔基体在动物和植物细胞中功能略有侧重：动物中侧重分泌物加工，植物中还负责细胞壁合成。',
+        subLabels: [
+          { pos: [-0.85, 0.55, -0.65], text: '顺面（接收囊泡侧）', color: '#f59e0b' },
+          { pos: [0.15, 0.82, 0.15], text: '层叠弧形扁平囊', color: '#fbbf24' },
+          { pos: [1.15, -0.15, 0.85], text: '反面出芽分泌囊泡', color: '#fed7aa' }
+        ]
+      },
+      vacuole: {
+        id: 'vacuole',
+        name: '中央大液泡',
+        en: 'Central Large Vacuole',
+        group: '单层膜细胞器',
+        color: '#38bdf8',
+        membrane: '单层液泡膜',
+        unique: 'plant',
+        summary: '成熟高等植物细胞中最显眼的单层膜囊状结构，可占细胞体积的 50%–90%，内含富含水、无机盐、糖类、有机酸与水溶性色素的细胞液。',
+        anatomy: [
+          { color: '#38bdf8', text: '液泡膜（晶莹蓝青单层膜）：具选择透过性，参与构成原生质层。' },
+          { color: '#bae6fd', text: '细胞液（透明水相内部）：储存水分、糖类、氨基酸与无机盐。' },
+          { color: '#f472b6', text: '水溶性色素微粒（如花青素）：赋予花瓣与果实红、蓝、紫等丰富色彩。' }
+        ],
+        functions: [
+          '调节植物细胞内部渗透压与水分平衡，维持细胞充盈坚挺（膨压）。',
+          '储存营养物质、离子、防御性次生代谢物与水溶性色素（花青素）。',
+          '含水解酶，在植物细胞中承担类似动物溶酶体的降解回收功能。'
+        ],
+        tip: '植物花瓣呈现红紫色靠液泡中的花青素；绿叶的绿色则来自叶绿体中的叶绿素！',
+        subLabels: [
+          { pos: [1.45, 0.65, 0.75], text: '液泡膜（单层选择透膜）', color: '#38bdf8' },
+          { pos: [-0.35, 0.25, 0.85], text: '细胞液（水分与溶质）', color: '#bae6fd' },
+          { pos: [0.45, -0.45, 0.45], text: '花青素 / 溶质微粒', color: '#f472b6' }
+        ]
+      },
+      lysosome: {
+        id: 'lysosome',
+        name: '溶酶体',
+        en: 'Lysosome',
+        group: '单层膜细胞器',
+        color: '#e11d48',
+        membrane: '单层膜',
+        unique: 'animal',
+        summary: '动物细胞中典型的“消化车间”，是由高尔基体断裂形成的单层膜球状囊泡，内部维持酸性环境（pH ≈ 4.5–5.0）并封装 50 余种酸性水解酶。',
+        anatomy: [
+          { color: '#e11d48', text: '单层膜外壳（玫红耐酸膜）：内表面高度糖基化，防止被自身水解酶消化。' },
+          { color: '#fda4af', text: '酸性内腔（pH ≈ 5.0）：质子泵主动泵入 H⁺ 维持酶的最适酸性环境。' },
+          { color: '#fde047', text: '酸性水解酶群（腔内彩色酶球）：蛋白酶、核酸酶、脂肪酶与糖苷酶。' }
+        ],
+        functions: [
+          '分解衰老、损伤的细胞器（细胞自噬），回收小分子原料再利用。',
+          '吞噬并杀死侵入细胞的病毒、细菌等病原体（免疫防御）。',
+          '分解胞吞摄入的大分子营养物质。'
+        ],
+        tip: '溶酶体内的水解酶本质是蛋白质，是在「核糖体」上合成、经内质网和高尔基体加工而来的。',
+        subLabels: [
+          { pos: [1.18, 0.42, 0.55], text: '耐酸单层膜（糖基化保护）', color: '#fb7185' },
+          { pos: [0.18, 0.12, 0.45], text: '酸性水解酶复合体', color: '#fde047' },
+          { pos: [-0.65, -0.58, 0.65], text: '酸性内腔（pH ≈ 5）', color: '#fda4af' }
+        ]
+      },
+      peroxisome: {
+        id: 'peroxisome',
+        name: '过氧化物酶体',
+        en: 'Peroxisome',
+        group: '单层膜细胞器',
+        color: '#8b5cf6',
+        membrane: '单层膜',
+        unique: null,
+        summary: '广泛存在于动植物细胞中的单层膜微体，其标志性电子显微结构是内部致密的晶体核心（尿酸氧化酶结晶），负责长链脂肪酸 β-氧化与清除有毒过氧化氢。',
+        anatomy: [
+          { color: '#8b5cf6', text: '单层脂质膜（靛紫球形外壳）：具特定膜转运蛋白导入基质酶。' },
+          { color: '#e0f2fe', text: '类核体结晶核心（中央菱晶）：高度浓缩的尿酸氧化酶等氧化酶结晶。' },
+          { color: '#c4b5fd', text: '过氧化氢酶基质颗粒：迅速催化 H₂O₂ 分解为无害的 H₂O 和 O₂。' }
+        ],
+        functions: [
+          '氧化分解极长链脂肪酸，为线粒体提供较短碳链底物。',
+          '利用过氧化氢酶将有毒副产物 H₂O₂ 快速分解，保护细胞免受氧化损伤。',
+          '在植物细胞中参与光呼吸过程及油料种子脂肪向糖类的转化（乙醛酸循环体）。'
+        ],
+        tip: '剖面中央闪亮的「多面体结晶核心」是辨认过氧化物酶体与溶酶体的直观标志！',
+        subLabels: [
+          { pos: [1.15, 0.35, 0.55], text: '单层膜外壳', color: '#a78bfa' },
+          { pos: [0.05, 0.08, 0.25], text: '致密结晶核心（氧化酶）', color: '#e0f2fe' },
+          { pos: [-0.62, -0.55, 0.62], text: '过氧化氢酶基质', color: '#c4b5fd' }
+        ]
+      },
+      ribosome: {
+        id: 'ribosome',
+        name: '核糖体',
+        en: 'Ribosome (Polysome)',
+        group: '无膜细胞器',
+        color: '#f472b6',
+        membrane: '无膜结构',
+        unique: null,
+        summary: '一切细胞生物共有的“蛋白质合成机器”，由 rRNA 与蛋白质组装成大小两个亚基，常串联在同一条 mRNA 上形成多聚核糖体，高效批量翻译多肽链。',
+        anatomy: [
+          { color: '#ec4899', text: '大亚基（60S，粉红宽体）：含肽酰转移酶中心，催化氨基酸脱水缩合。' },
+          { color: '#fbcfe8', text: '小亚基（40S，浅粉帽盖）：识别结合 mRNA 并精准配对密码子。' },
+          { color: '#fbbf24', text: 'mRNA 信使链（金色丝带）：贯穿大小亚基之间，携带遗传密码。' },
+          { color: '#34d399', text: '新生多肽链（翠绿延伸链）：正从大亚基出口通道延伸而出。' }
+        ],
+        functions: [
+          '以 mRNA 为模板、氨基酸为原料，精准合成细胞所需的各类蛋白质。',
+          '游离核糖体主要合成胞内蛋白；附着于粗面内质网的核糖体主要合成分泌蛋白与膜蛋白。'
+        ],
+        tip: '核糖体没有膜结构！点击上方「独立特写观察」可近距离看清大小亚基夹持 mRNA 的立体结构。',
+        subLabels: [
+          { pos: [0.0, -0.45, 0.55], text: '大亚基（60S）', color: '#f472b6' },
+          { pos: [0.0, 0.72, 0.45], text: '小亚基（40S）', color: '#fbcfe8' },
+          { pos: [1.45, 0.12, 0.25], text: 'mRNA 模板链', color: '#fbbf24' },
+          { pos: [-0.55, 1.15, -0.15], text: '延伸中的新生多肽链', color: '#34d399' }
+        ]
+      },
+      centrosome: {
+        id: 'centrosome',
+        name: '中心体',
+        en: 'Centrosome (Centrioles)',
+        group: '无膜细胞器',
+        color: '#a3e635',
+        membrane: '无膜结构',
+        unique: 'animal',
+        summary: '动物细胞（及低等植物细胞）特有的微管组织中心，位于细胞核附近，核心为一对呈 90° 互相垂直排列的圆柱形中心粒，每条中心粒由经典的 9 组三联微管围成。',
+        anatomy: [
+          { color: '#84cc16', text: '一对互相垂直的中心粒（90° 桶状双体）：由微管蛋白精准组装。' },
+          { color: '#bef264', text: '9×3 三联微管阵列（27 根微管）：呈风车状 9 重对称环绕中轴。' },
+          { color: '#ecfccb', text: '星射线 / 周围微管（放射细丝）：向外辐射构建细胞骨架与纺锤丝。' }
+        ],
+        functions: [
+          '在细胞有丝分裂间期完成倍增，分裂前期移向两极并发出星射线形成纺锤体。',
+          '牵引姐妹染色单体精准均分到两个子细胞中。',
+          '作为间期细胞微管组织中心（MTOC），调控微管骨架排布。'
+        ],
+        tip: '高等植物细胞没有中心体，其分裂时直接由细胞两极发出纺锤丝构成纺锤体！',
+        subLabels: [
+          { pos: [-0.75, 0.85, 0.55], text: '母中心粒（9×3 三联微管）', color: '#a3e635' },
+          { pos: [0.95, -0.55, 0.45], text: '子中心粒（互相垂直 90°）', color: '#bef264' },
+          { pos: [1.45, 0.95, -0.25], text: '放射状星射线（微管）', color: '#ecfccb' }
+        ]
+      }
+    };
+
+    const CELL_ROSTERS = {
+      animal: [
+        'membrane', 'cytoplasm', 'nucleus', 'mitochondrion',
+        'roughER', 'smoothER', 'golgi', 'ribosome',
+        'centrosome', 'lysosome', 'peroxisome'
+      ],
+      plant: [
+        'cellWall', 'membrane', 'cytoplasm', 'nucleus',
+        'vacuole', 'chloroplast', 'mitochondrion',
+        'roughER', 'smoothER', 'golgi', 'ribosome', 'peroxisome'
+      ]
+    };
+
+    /* =========================================================================
+       3. Procedural PBR Textures & Studio Environment (Zero External Assets)
+       ========================================================================= */
+    function createNoiseBumpTexture(seedColorA, seedColorB, streaks = false) {
+      const c = document.createElement('canvas');
+      c.width = 256;
+      c.height = 256;
+      const ctx = c.getContext('2d');
+      ctx.fillStyle = seedColorA;
+      ctx.fillRect(0, 0, 256, 256);
+
+      if (streaks) {
+        // Cellulose fibrous cross-hatch texture for plant cell wall
+        ctx.strokeStyle = seedColorB;
+        ctx.globalAlpha = 0.25;
+        for (let i = 0; i < 240; i++) {
+          ctx.lineWidth = 0.8 + Math.random() * 1.6;
+          ctx.beginPath();
+          const x = Math.random() * 256;
+          const y = Math.random() * 256;
+          const ang = (Math.random() > 0.5 ? 0.2 : -0.2) + (Math.random() - 0.5) * 0.25;
+          const len = 35 + Math.random() * 75;
+          ctx.moveTo(x, y);
+          ctx.lineTo(x + Math.cos(ang) * len, y + Math.sin(ang) * len);
+          ctx.stroke();
+        }
+      } else {
+        // Organic stipple bump map
+        for (let i = 0; i < 900; i++) {
+          const x = Math.random() * 256;
+          const y = Math.random() * 256;
+          const r = 1.5 + Math.random() * 5;
+          ctx.fillStyle = i % 2 === 0 ? seedColorB : '#ffffff';
+          ctx.globalAlpha = 0.08 + Math.random() * 0.1;
+          ctx.beginPath();
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      const tex = new THREE.CanvasTexture(c);
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(3, 3);
+      return tex;
+    }
+
+    function createStudioEnvironment(renderer) {
+      const pmrem = new THREE.PMREMGenerator(renderer);
+      const envScene = new THREE.Scene();
+      envScene.background = new THREE.Color(0x0c1b2e);
+
+      const panelGeo = new THREE.PlaneGeometry(14, 14);
+      const addLightPanel = (color, intensity, pos, rot) => {
+        const mat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(color).multiplyScalar(intensity),
+          side: THREE.DoubleSide
+        });
+        const m = new THREE.Mesh(panelGeo, mat);
+        m.position.set(...pos);
+        m.rotation.set(...rot);
+        envScene.add(m);
+      };
+
+      addLightPanel(0xffffff, 2.6, [8, 12, 10], [-Math.PI / 3, 0.4, 0]);
+      addLightPanel(0x7dd3fc, 2.0, [-12, 6, 4], [0, Math.PI / 2.2, 0]);
+      addLightPanel(0x6ee7b7, 1.5, [0, 8, -14], [0.3, 0, 0]);
+      addLightPanel(0xfde68a, 1.1, [10, -8, -4], [Math.PI / 2.5, -0.5, 0]);
+
+      const rt = pmrem.fromScene(envScene, 0.04);
+      pmrem.dispose();
+      return rt.texture;
+    }
+
+    const TEX_ORGANIC_BUMP = createNoiseBumpTexture('#808080', '#484848', false);
+    const TEX_CELLULOSE_BUMP = createNoiseBumpTexture('#7f7f7f', '#2e2e2e', true);
+
+    /* =========================================================================
+       4. Material Helpers & Tagging Utility
+       ========================================================================= */
+    function tagOrganelle(root, orgId) {
+      root.userData.orgId = orgId;
+      root.traverse((obj) => {
+        obj.userData.orgId = orgId;
+        if (obj.isMesh && obj.material) {
+          // Ensure each tagged mesh has clean base emissive tracking for hover/selection highlight
+          if (Array.isArray(obj.material)) {
+            obj.material = obj.material.map((m) => m.clone());
+          } else if (!obj.userData._matCloned) {
+            obj.material = obj.material.clone();
+            obj.userData._matCloned = true;
+          }
+          const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+          mats.forEach((m) => {
+            if (m.emissive && !m.userData._baseEmissive) {
+              m.userData._baseEmissive = m.emissive.clone();
+              m.userData._baseEmissiveIntensity = m.emissiveIntensity ?? 1.0;
+            }
+            if (m.userData._baseOpacity === undefined) {
+              m.userData._baseOpacity = m.opacity;
+              m.userData._baseTransparent = m.transparent;
+            }
+          });
+        }
+      });
+      return root;
+    }
+
+    function stdMat(params) {
+      return new THREE.MeshStandardMaterial({
+        roughness: 0.36,
+        metalness: 0.06,
+        ...params
+      });
+    }
+
+    function physMat(params) {
+      return new THREE.MeshPhysicalMaterial({
+        roughness: 0.24,
+        metalness: 0.04,
+        clearcoat: 0.55,
+        clearcoatRoughness: 0.18,
+        ...params
+      });
+    }
+
+    /* =========================================================================
+       5. High-Detail Procedural 3D Organelle Builders
+       ========================================================================= */
+
+    /**
+     * 5.1 NUCLEUS (双层核膜 1/8 切面 + 表面核孔环 + 内部核仁 + 3D 盘绕染色质丝)
+     */
+    function buildNucleus(radius = 1.48) {
+      const g = new THREE.Group();
+      const innerR = radius - 0.11;
+
+      const outerMat = physMat({
+        color: 0x7e3af2,
+        roughness: 0.34,
+        clearcoat: 0.45,
+        bumpMap: TEX_ORGANIC_BUMP,
+        bumpScale: 0.02,
+        side: THREE.FrontSide
+      });
+      const innerWallMat = stdMat({
+        color: 0x5b21b6,
+        roughness: 0.45,
+        side: THREE.BackSide
+      });
+      const rimMat = stdMat({
+        color: 0xc084fc,
+        emissive: 0x4c1d95,
+        emissiveIntensity: 0.25,
+        roughness: 0.3,
+        side: THREE.DoubleSide
+      });
+
+      // Lower full hemisphere (theta: PI/2 .. PI)
+      const lowerOuter = new THREE.Mesh(
+        new THREE.SphereGeometry(radius, 44, 24, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+        outerMat
+      );
+      const lowerInner = new THREE.Mesh(
+        new THREE.SphereGeometry(innerR, 40, 20, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+        innerWallMat
+      );
+      g.add(lowerOuter, lowerInner);
+
+      // Upper 3/4 hemisphere: leave phi in [0, PI/2] open as crisp cutaway octant!
+      // Note: in Three.js SphereGeometry, x = -R*cos(phi)*sin(theta), z = R*sin(phi)*sin(theta).
+      // Missing phi ∈ [PI/2, PI] opens (+X, +Y, +Z)!
+      const upperOuter = new THREE.Mesh(
+        new THREE.SphereGeometry(radius, 44, 24, Math.PI, Math.PI * 1.5, 0, Math.PI / 2),
+        outerMat
+      );
+      const upperInner = new THREE.Mesh(
+        new THREE.SphereGeometry(innerR, 40, 20, Math.PI, Math.PI * 1.5, 0, Math.PI / 2),
+        innerWallMat
+      );
+      g.add(upperOuter, upperInner);
+
+      // Three crisp double-membrane cross-section caps sealing the open octant (+X, +Y, +Z)
+      // 1) Horizontal XZ quarter-ring at y = 0 (covering +X, +Z)
+      const ringGeoXZ = new THREE.RingGeometry(innerR, radius, 28, 1, 0, Math.PI / 2);
+      const capXZ = new THREE.Mesh(ringGeoXZ, rimMat);
+      capXZ.rotation.x = Math.PI / 2; // maps +X->+X, +Y->+Z
+      g.add(capXZ);
+
+      // 2) Vertical XY quarter-ring at z = 0 (covering +X, +Y)
+      const ringGeoXY = new THREE.RingGeometry(innerR, radius, 28, 1, 0, Math.PI / 2);
+      const capXY = new THREE.Mesh(ringGeoXY, rimMat);
+      g.add(capXY);
+
+      // 3) Vertical YZ quarter-ring at x = 0 (covering +Y, +Z)
+      const ringGeoYZ = new THREE.RingGeometry(innerR, radius, 28, 1, 0, Math.PI / 2);
+      const capYZ = new THREE.Mesh(ringGeoYZ, rimMat);
+      capYZ.rotation.y = -Math.PI / 2; // maps +X->+Z, +Y->+Y
+      g.add(capYZ);
+
+      // Translucent nucleoplasm inner glow
+      const nucleoplasm = new THREE.Mesh(
+        new THREE.SphereGeometry(innerR - 0.03, 32, 24),
+        physMat({
+          color: 0xa78bfa,
+          transparent: true,
+          opacity: 0.16,
+          roughness: 0.15,
+          depthWrite: false
+        })
+      );
+      g.add(nucleoplasm);
+
+      // Nucleolus (核仁) - glowing dense sphere in the center
+      const nucleolus = new THREE.Mesh(
+        new THREE.SphereGeometry(radius * 0.36, 32, 24),
+        physMat({
+          color: 0xf43f5e,
+          emissive: 0x9f1239,
+          emissiveIntensity: 0.55,
+          roughness: 0.28,
+          bumpMap: TEX_ORGANIC_BUMP,
+          bumpScale: 0.025
+        })
+      );
+      nucleolus.position.set(-0.08, -0.04, -0.06);
+      g.add(nucleolus);
+
+      // Chromatin (染色质) - 9 sinuous 3D intertwined filaments visible inside the cutaway!
+      const chromMat1 = stdMat({
+        color: 0xf0abfc,
+        emissive: 0xa21caf,
+        emissiveIntensity: 0.35,
+        roughness: 0.35
+      });
+      const chromMat2 = stdMat({
+        color: 0xe879f9,
+        emissive: 0x701a75,
+        emissiveIntensity: 0.3,
+        roughness: 0.35
+      });
+
+      for (let i = 0; i < 9; i++) {
+        const pts = [];
+        const baseA = (i / 9) * Math.PI * 2;
+        const elev = ((i % 3) - 1) * 0.42;
+        for (let k = 0; k <= 14; k++) {
+          const t = k / 14;
+          const ang = baseA + t * Math.PI * 1.55;
+          const r = radius * (0.48 + 0.30 * Math.sin(t * Math.PI * 2 + i * 1.3));
+          const x = Math.cos(ang) * r;
+          const z = Math.sin(ang) * r;
+          const y = Math.sin(t * Math.PI * 3 + i) * radius * 0.42 + elev * radius * 0.45;
+          // Keep comfortably inside innerR
+          const v = new THREE.Vector3(x, y, z);
+          if (v.length() > innerR - 0.12) v.setLength(innerR - 0.12);
+          if (v.length() < radius * 0.42) v.setLength(radius * 0.42);
+          pts.push(v);
+        }
+        const curve = new THREE.CatmullRomCurve3(pts);
+        const tube = new THREE.Mesh(
+          new THREE.TubeGeometry(curve, 36, 0.024 * (radius / 1.48), 7, false),
+          i % 2 === 0 ? chromMat1 : chromMat2
+        );
+        g.add(tube);
+      }
+
+      // Nuclear Pores (核孔复合体) - ring + dark channel across outer intact shell
+      const poreRingGeo = new THREE.TorusGeometry(0.068 * (radius / 1.48), 0.022 * (radius / 1.48), 7, 14);
+      const poreCoreGeo = new THREE.CircleGeometry(0.052 * (radius / 1.48), 10);
+      const poreRingMat = stdMat({
+        color: 0xe9d5ff,
+        emissive: 0x6b21a8,
+        emissiveIntensity: 0.3,
+        roughness: 0.25
+      });
+      const poreCoreMat = stdMat({ color: 0x1e0936, roughness: 0.85, side: THREE.DoubleSide });
+
+      const poreCount = 72;
+      const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+      const zAxis = new THREE.Vector3(0, 0, 1);
+
+      for (let i = 0; i < poreCount; i++) {
+        const y = 1 - (i / (poreCount - 1)) * 2;
+        const radAtY = Math.sqrt(Math.max(0, 1 - y * y));
+        const theta = goldenAngle * i;
+        const x = Math.cos(theta) * radAtY;
+        const z = Math.sin(theta) * radAtY;
+
+        // Skip the open (+X, +Y, +Z) octant with slight margin from cut edge
+        if (x > -0.06 && y > -0.06 && z > -0.06) continue;
+
+        const dir = new THREE.Vector3(x, y, z).normalize();
+        const poreGroup = new THREE.Group();
+        poreGroup.position.copy(dir).multiplyScalar(radius + 0.006);
+        poreGroup.quaternion.setFromUnitVectors(zAxis, dir);
+
+        poreGroup.add(new THREE.Mesh(poreRingGeo, poreRingMat));
+        const core = new THREE.Mesh(poreCoreGeo, poreCoreMat);
+        core.position.z = 0.005;
+        poreGroup.add(core);
+        g.add(poreGroup);
+      }
+
+      return g;
+    }
+
+    /**
+     * 5.2 MITOCHONDRION (花生状纵剖面 + 外膜 + 内膜蛇形折叠「嵴」 + 基质 + 环状 mtDNA)
+     */
+    function buildMitochondrion(scale = 1.0) {
+      const g = new THREE.Group();
+      const R = 0.50;
+      const halfCyl = 0.56;
+
+      // Build lower longitudinal half-capsule using custom Lathe/Parametric split
+      // Easier & ultra-clean: hemisphere caps + half cylinder (lower half y <= 0)
+      const outerMat = physMat({
+        color: 0xd93829,
+        roughness: 0.32,
+        clearcoat: 0.55,
+        bumpMap: TEX_ORGANIC_BUMP,
+        bumpScale: 0.015,
+        side: THREE.DoubleSide
+      });
+      const innerShellMat = stdMat({
+        color: 0xf97316,
+        roughness: 0.4,
+        side: THREE.DoubleSide
+      });
+      const cutLipMat = stdMat({
+        color: 0xfb923c,
+        emissive: 0x9a3412,
+        emissiveIntensity: 0.25,
+        roughness: 0.32,
+        side: THREE.DoubleSide
+      });
+
+      const makeHalfCapsule = (rad, len, mat) => {
+        const sub = new THREE.Group();
+        // CylinderGeometry vertices: x = r*sin(t), z = r*cos(t), y = h.
+        // After rotation.z = PI/2: x' = -y, y' = x = r*sin(t), z' = z = r*cos(t).
+        // So y' <= 0 cleanly when t ∈ [PI, 2*PI].
+        const cylExact = new THREE.Mesh(
+          new THREE.CylinderGeometry(rad, rad, len * 2, 28, 1, true, Math.PI, Math.PI),
+          mat
+        );
+        cylExact.rotation.z = Math.PI / 2;
+
+        // Lower-Y hemispheres for -X and +X poles (theta: PI/2..PI => y <= 0)
+        const leftEnd = new THREE.Mesh(
+          new THREE.SphereGeometry(rad, 24, 14, -Math.PI / 2, Math.PI, Math.PI / 2, Math.PI / 2),
+          mat
+        );
+        leftEnd.position.x = -len;
+
+        const rightEnd = new THREE.Mesh(
+          new THREE.SphereGeometry(rad, 24, 14, Math.PI / 2, Math.PI, Math.PI / 2, Math.PI / 2),
+          mat
+        );
+        rightEnd.position.x = len;
+
+        sub.add(cylExact, leftEnd, rightEnd);
+        return sub;
+      };
+
+      g.add(makeHalfCapsule(R, halfCyl, outerMat));
+      g.add(makeHalfCapsule(R - 0.065, halfCyl, innerShellMat));
+
+      // Flat rim stadium ring at y = 0 sealing outer and inner membrane gap (膜间隙!)
+      const makeStadiumShape = (rad, len) => {
+        const s = new THREE.Shape();
+        s.absarc(-len, 0, rad, Math.PI / 2, Math.PI * 1.5, false);
+        s.absarc(len, 0, rad, -Math.PI / 2, Math.PI / 2, false);
+        s.closePath();
+        return s;
+      };
+      const rimShape = makeStadiumShape(R, halfCyl);
+      const rimHole = makeStadiumShape(R - 0.068, halfCyl);
+      rimShape.holes.push(rimHole);
+      const rimMesh = new THREE.Mesh(new THREE.ShapeGeometry(rimShape, 24), cutLipMat);
+      rimMesh.rotation.x = -Math.PI / 2;
+      rimMesh.position.y = 0.002;
+      g.add(rimMesh);
+
+      // Soft amber Matrix bed (线粒体基质)
+      const matrixBed = new THREE.Mesh(
+        new THREE.ShapeGeometry(makeStadiumShape(R - 0.075, halfCyl), 20),
+        stdMat({ color: 0xfde68a, emissive: 0xb45309, emissiveIntensity: 0.2, roughness: 0.55, side: THREE.DoubleSide })
+      );
+      matrixBed.rotation.x = -Math.PI / 2;
+      matrixBed.position.y = -0.22;
+      g.add(matrixBed);
+
+      // CRISTAE (嵴 — Serpentine Folded Inner Membrane Ribbon!)
+      // Construct an iconic continuous folded inner membrane with 6 deep alternating baffles
+      const cristaeMat = physMat({
+        color: 0xffad33,
+        emissive: 0xc2410c,
+        emissiveIntensity: 0.28,
+        roughness: 0.28,
+        clearcoat: 0.45
+      });
+
+      const innerW = R - 0.105; // 0.395
+      const innerL = halfCyl + innerW * 0.72; // ~0.84
+      // Build outer rim + alternating finger-like inward baffles as extruded continuous wall
+      const cristaeGroup = new THREE.Group();
+
+      // Perimeter inner-membrane track
+      const trackOuter = makeStadiumShape(R - 0.08, halfCyl);
+      const trackInner = makeStadiumShape(R - 0.135, halfCyl);
+      trackOuter.holes.push(trackInner);
+      const trackMesh = new THREE.Mesh(
+        new THREE.ExtrudeGeometry(trackOuter, {
+          depth: 0.26,
+          bevelEnabled: true,
+          bevelThickness: 0.015,
+          bevelSize: 0.012,
+          bevelSegments: 2
+        }),
+        cristaeMat
+      );
+      trackMesh.rotation.x = -Math.PI / 2;
+      trackMesh.position.y = -0.24;
+      cristaeGroup.add(trackMesh);
+
+      // 7 crisp alternating folded cristae baffles extending inward from alternating walls
+      // Note: baffle.rotation.x = -PI/2 maps shape (x_s, y_s, z_ext) -> world (x_s, +z_ext, -y_s).
+      // So to reach INWARD from wallZ = sideSign * innerW toward -sideSign, we want world Δz = -sideSign * reach,
+      // which means shape y_s = -Δz = +sideSign * reach!
+      const baffleCount = 7;
+      for (let i = 0; i < baffleCount; i++) {
+        const t = (i + 0.5) / baffleCount;
+        const xPos = -halfCyl * 0.96 + t * (halfCyl * 1.92);
+        const sideSign = i % 2 === 0 ? 1 : -1;
+        const wallZ = sideSign * (innerW - 0.01);
+        const reach = innerW * 1.32;
+
+        const bShape = new THREE.Shape();
+        const halfThick = 0.040;
+        const yStart = 0;
+        const yEnd = sideSign * reach;
+        const minY = Math.min(yStart, yEnd);
+        const maxY = Math.max(yStart, yEnd);
+        // Rounded finger shape spanning [minY, maxY] in shape-Y
+        bShape.moveTo(-halfThick, minY + halfThick);
+        bShape.absarc(0, minY + halfThick, halfThick, Math.PI, 0, false);
+        bShape.lineTo(halfThick, maxY - halfThick);
+        bShape.absarc(0, maxY - halfThick, halfThick, 0, Math.PI, false);
+        bShape.closePath();
+
+        const bGeo = new THREE.ExtrudeGeometry(bShape, {
+          depth: 0.25,
+          bevelEnabled: true,
+          bevelThickness: 0.014,
+          bevelSize: 0.009,
+          bevelSegments: 2
+        });
+        const baffle = new THREE.Mesh(bGeo, cristaeMat);
+        baffle.rotation.x = -Math.PI / 2;
+        baffle.position.set(xPos, -0.24, wallZ);
+        cristaeGroup.add(baffle);
+      }
+      g.add(cristaeGroup);
+
+      // Circular mtDNA loops (线粒体环状DNA) & matrix granules
+      const dnaMat = stdMat({ color: 0x38bdf8, emissive: 0x0284c7, emissiveIntensity: 0.75, roughness: 0.2 });
+      const dna1 = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.015, 8, 20), dnaMat);
+      dna1.rotation.x = Math.PI / 2;
+      dna1.position.set(-0.34, -0.04, 0.04);
+      const dna2 = new THREE.Mesh(new THREE.TorusGeometry(0.056, 0.013, 8, 18), dnaMat);
+      dna2.rotation.x = Math.PI / 2;
+      dna2.position.set(0.46, -0.04, -0.05);
+      g.add(dna1, dna2);
+
+      // Matrix ribosomes (tiny white-gold dots)
+      const dotGeo = new THREE.SphereGeometry(0.022, 8, 8);
+      const dotMat = stdMat({ color: 0xfef9c3, emissive: 0xfacc15, emissiveIntensity: 0.4 });
+      [[-0.65, -0.06, -0.14], [-0.08, -0.06, 0.16], [0.22, -0.06, -0.14], [0.68, -0.06, 0.12], [-0.36, -0.06, -0.18]].forEach((p) => {
+        const d = new THREE.Mesh(dotGeo, dotMat);
+        d.position.set(...p);
+        g.add(d);
+      });
+
+      g.scale.setScalar(scale);
+      return g;
+    }
+
+    /**
+     * 5.3 CHLOROPLAST (高等植物叶绿体：双层透镜状剖面 + 多叠翠绿基粒类囊体 + 基质片层 + 淀粉粒)
+     */
+    function buildChloroplast(scale = 1.0) {
+      const g = new THREE.Group();
+      const sx = 1.05, sy = 0.56, sz = 0.68;
+
+      const outerMat = physMat({
+        color: 0x15803d,
+        roughness: 0.28,
+        clearcoat: 0.6,
+        bumpMap: TEX_ORGANIC_BUMP,
+        bumpScale: 0.015,
+        side: THREE.DoubleSide
+      });
+      const innerMat = stdMat({
+        color: 0x22c55e,
+        roughness: 0.36,
+        side: THREE.DoubleSide
+      });
+      const rimMat = stdMat({
+        color: 0x4ade80,
+        emissive: 0x166534,
+        emissiveIntensity: 0.25,
+        roughness: 0.3,
+        side: THREE.DoubleSide
+      });
+
+      // Lower biconvex lens bowl (theta: PI/2 .. PI) scaled into lens ellipsoid
+      const outerBowl = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 36, 18, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+        outerMat
+      );
+      outerBowl.scale.set(sx, sy, sz);
+      g.add(outerBowl);
+
+      const innerBowl = new THREE.Mesh(
+        new THREE.SphereGeometry(1, 32, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2),
+        innerMat
+      );
+      innerBowl.scale.set(sx - 0.075, sy - 0.06, sz - 0.065);
+      g.add(innerBowl);
+
+      // Double-membrane elliptical cut rim at y = 0
+      const outerRimShape = new THREE.Shape();
+      outerRimShape.absellipse(0, 0, sx, sz, 0, Math.PI * 2, false, 0);
+      const innerRimHole = new THREE.Path();
+      innerRimHole.absellipse(0, 0, sx - 0.075, sz - 0.065, 0, Math.PI * 2, true, 0);
+      outerRimShape.holes.push(innerRimHole);
+
+      const rimMesh = new THREE.Mesh(new THREE.ShapeGeometry(outerRimShape, 40), rimMat);
+      rimMesh.rotation.x = -Math.PI / 2;
+      rimMesh.position.y = 0.004;
+      g.add(rimMesh);
+
+      // Soft translucent Stroma (叶绿体基质)
+      const stromaShape = new THREE.Shape();
+      stromaShape.absellipse(0, 0, sx - 0.085, sz - 0.075, 0, Math.PI * 2, false, 0);
+      const stromaMesh = new THREE.Mesh(
+        new THREE.ShapeGeometry(stromaShape, 32),
+        stdMat({ color: 0x86efac, transparent: true, opacity: 0.42, roughness: 0.3, side: THREE.DoubleSide })
+      );
+      stromaMesh.rotation.x = -Math.PI / 2;
+      stromaMesh.position.y = -0.18;
+      g.add(stromaMesh);
+
+      // GRANA (基粒) — 6 neat coin-like stacks of THYLAKOIDS (类囊体)
+      const thylakoidMat = physMat({
+        color: 0x34d399,
+        emissive: 0x065f46,
+        emissiveIntensity: 0.34,
+        roughness: 0.24,
+        clearcoat: 0.55
+      });
+      const discGeo = new THREE.CylinderGeometry(0.155, 0.155, 0.042, 22);
+
+      const granaSpecs = [
+        { x: -0.56, z: 0.04, count: 5, baseY: -0.26 },
+        { x: -0.22, z: -0.24, count: 6, baseY: -0.28 },
+        { x: -0.14, z: 0.24, count: 6, baseY: -0.28 },
+        { x: 0.24, z: -0.14, count: 6, baseY: -0.28 },
+        { x: 0.26, z: 0.26, count: 5, baseY: -0.25 },
+        { x: 0.62, z: -0.02, count: 5, baseY: -0.24 }
+      ];
+
+      granaSpecs.forEach((gr) => {
+        for (let k = 0; k < gr.count; k++) {
+          const disc = new THREE.Mesh(discGeo, thylakoidMat);
+          disc.position.set(gr.x, gr.baseY + k * 0.056, gr.z);
+          g.add(disc);
+        }
+      });
+
+      // STROMA LAMELLAE (基质片层) — flat green ribbon bridges connecting grana stacks!
+      const lamellaMat = stdMat({
+        color: 0x6ee7b7,
+        emissive: 0x047857,
+        emissiveIntensity: 0.25,
+        roughness: 0.3
+      });
+      const links = [
+        [0, 1, -0.12], [0, 2, -0.06], [1, 3, -0.08],
+        [2, 4, -0.11], [3, 5, -0.09], [4, 5, -0.16], [1, 2, -0.17]
+      ];
+      links.forEach(([a, b, yH]) => {
+        const pa = new THREE.Vector3(granaSpecs[a].x, yH, granaSpecs[a].z);
+        const pb = new THREE.Vector3(granaSpecs[b].x, yH, granaSpecs[b].z);
+        const dist = pa.distanceTo(pb);
+        const mid = pa.clone().add(pb).multiplyScalar(0.5);
+        const bridge = new THREE.Mesh(new THREE.BoxGeometry(dist, 0.022, 0.065), lamellaMat);
+        bridge.position.copy(mid);
+        bridge.rotation.y = -Math.atan2(pb.z - pa.z, pb.x - pa.x);
+        g.add(bridge);
+      });
+
+      // Starch Granules (淀粉粒) — smooth ivory-white ovoids inside the stroma
+      const starchMat = physMat({ color: 0xf8fafc, roughness: 0.25, clearcoat: 0.5 });
+      const starch1 = new THREE.Mesh(new THREE.SphereGeometry(0.11, 16, 12), starchMat);
+      starch1.scale.set(1.35, 0.72, 0.9);
+      starch1.position.set(0.54, -0.05, 0.28);
+      const starch2 = new THREE.Mesh(new THREE.SphereGeometry(0.085, 14, 10), starchMat);
+      starch2.scale.set(1.2, 0.7, 0.85);
+      starch2.position.set(-0.56, -0.08, -0.26);
+      g.add(starch1, starch2);
+
+      // Tiny cpDNA ring
+      const cpDNA = new THREE.Mesh(
+        new THREE.TorusGeometry(0.062, 0.012, 8, 18),
+        stdMat({ color: 0xfde047, emissive: 0xca8a04, emissiveIntensity: 0.65 })
+      );
+      cpDNA.rotation.x = Math.PI / 2;
+      cpDNA.position.set(0.03, -0.02, -0.02);
+      g.add(cpDNA);
+
+      g.scale.setScalar(scale);
+      return g;
+    }
+
+    /**
+     * 5.4 ROUGH ER (粗面内质网：多层同心弧形扁平囊 + 金色附着核糖体颗粒)
+     */
+    function buildRoughER(arcSpan = Math.PI * 1.12, baseRadius = 1.68, height = 1.02) {
+      const g = new THREE.Group();
+      const sheetMat = physMat({
+        color: 0x2563eb,
+        emissive: 0x1d4ed8,
+        emissiveIntensity: 0.2,
+        roughness: 0.34,
+        clearcoat: 0.45
+      });
+      const lumenRimMat = stdMat({
+        color: 0x93c5fd,
+        emissive: 0x1e40af,
+        emissiveIntensity: 0.25,
+        roughness: 0.3
+      });
+      const riboMat = stdMat({
+        color: 0xfbbf24,
+        emissive: 0xb45309,
+        emissiveIntensity: 0.35,
+        roughness: 0.25
+      });
+      const riboGeo = new THREE.SphereGeometry(0.038, 8, 8);
+
+      const layers = 3;
+      for (let l = 0; l < layers; l++) {
+        const rIn = baseRadius + l * 0.32;
+        const rOut = rIn + 0.14;
+        const span = arcSpan * (1.0 - l * 0.14);
+        const startA = -span / 2 + l * 0.07;
+        const endA = startA + span;
+        const segs = 32;
+
+        // Build curved crescent ribbon shape in XY, then extrude along Y (height)
+        const s = new THREE.Shape();
+        const rMid = (rIn + rOut) / 2;
+        const capR = (rOut - rIn) / 2;
+        s.absarc(0, 0, rOut, startA, endA, false);
+        s.absarc(Math.cos(endA) * rMid, Math.sin(endA) * rMid, capR, endA, endA + Math.PI, false);
+        s.absarc(0, 0, rIn, endA, startA, true);
+        s.absarc(Math.cos(startA) * rMid, Math.sin(startA) * rMid, capR, startA + Math.PI, startA, false);
+        s.closePath();
+
+        const hLayer = height * (1.0 - l * 0.12);
+        const geo = new THREE.ExtrudeGeometry(s, {
+          depth: hLayer,
+          bevelEnabled: true,
+          bevelThickness: 0.025,
+          bevelSize: 0.018,
+          bevelSegments: 2,
+          curveSegments: segs
+        });
+        const mesh = new THREE.Mesh(geo, sheetMat);
+        mesh.rotation.x = -Math.PI / 2;
+        mesh.position.y = -hLayer * 0.5;
+        g.add(mesh);
+
+        // Bright luminal slit strip on top face to clearly show hollow cisterna cavity!
+        const slitS = new THREE.Shape();
+        slitS.absarc(0, 0, rMid + 0.028, startA + 0.04, endA - 0.04, false);
+        slitS.absarc(0, 0, rMid - 0.028, endA - 0.04, startA + 0.04, true);
+        slitS.closePath();
+        const slit = new THREE.Mesh(new THREE.ShapeGeometry(slitS, 24), lumenRimMat);
+        slit.rotation.x = -Math.PI / 2;
+        slit.position.y = hLayer * 0.5 + 0.027;
+        g.add(slit);
+
+        // Tubular cross-bridges connecting adjacent cisternae layers
+        if (l < layers - 1) {
+          for (let b = 0; b < 2; b++) {
+            const bAng = startA + span * (0.28 + b * 0.44);
+            const bridge = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.055, 0.22, 10), sheetMat);
+            const bR = rOut + 0.09;
+            bridge.position.set(Math.cos(bAng) * bR, (b === 0 ? -0.12 : 0.14), -Math.sin(bAng) * bR);
+            bridge.rotation.z = Math.PI / 2;
+            bridge.rotation.y = bAng;
+            g.add(bridge);
+          }
+        }
+
+        // Stud outer cytoplasmic face with bound golden Ribosomes!
+        const rows = 4;
+        const cols = Math.round(13 - l * 2);
+        for (let r = 0; r < rows; r++) {
+          const yP = -hLayer * 0.38 + (r / (rows - 1)) * hLayer * 0.76;
+          for (let c = 0; c < cols; c++) {
+            const ang = startA + 0.08 + ((c + (r % 2) * 0.45) / cols) * (span - 0.16);
+            const rb = new THREE.Mesh(riboGeo, riboMat);
+            // Note: Shape rotated by -PI/2 around X maps shape (x, y) -> world (x, 0, -y)
+            rb.position.set(Math.cos(ang) * (rOut + 0.03), yP, -Math.sin(ang) * (rOut + 0.03));
+            g.add(rb);
+          }
+        }
+      }
+
+      return g;
+    }
+
+    /**
+     * 5.5 SMOOTH ER (滑面内质网：光滑无颗粒、珊瑚状分支互通的管状膜网络)
+     */
+    function buildSmoothER(scale = 1.0) {
+      const g = new THREE.Group();
+      const tubeMat = physMat({
+        color: 0x06b6d4,
+        emissive: 0x0e7490,
+        emissiveIntensity: 0.24,
+        roughness: 0.22,
+        clearcoat: 0.65
+      });
+
+      // Interconnected 3D tubular lattice nodes
+      const nodes = [
+        new THREE.Vector3(-0.62, -0.22, -0.35),
+        new THREE.Vector3(-0.22, 0.05, -0.45),
+        new THREE.Vector3(0.28, -0.15, -0.38),
+        new THREE.Vector3(0.68, 0.14, -0.12),
+        new THREE.Vector3(-0.48, 0.34, 0.06),
+        new THREE.Vector3(0.0, 0.24, 0.05),
+        new THREE.Vector3(0.45, 0.38, 0.25),
+        new THREE.Vector3(-0.52, -0.25, 0.38),
+        new THREE.Vector3(-0.04, -0.18, 0.48),
+        new THREE.Vector3(0.46, -0.22, 0.42),
+        new THREE.Vector3(0.05, 0.56, -0.18),
+        new THREE.Vector3(-0.18, 0.48, 0.42),
+        new THREE.Vector3(0.75, -0.26, 0.14)
+      ];
+
+      const edges = [
+        [0, 1], [1, 2], [2, 3], [0, 4], [4, 5], [5, 6], [6, 3],
+        [1, 5], [2, 6], [0, 7], [7, 8], [8, 9], [9, 12], [12, 3],
+        [4, 7], [5, 8], [6, 9], [1, 10], [10, 5], [10, 6], [4, 11], [11, 8], [11, 6]
+      ];
+
+      const jointGeo = new THREE.SphereGeometry(0.095, 12, 12);
+      nodes.forEach((p) => {
+        const j = new THREE.Mesh(jointGeo, tubeMat);
+        j.position.copy(p);
+        g.add(j);
+      });
+
+      edges.forEach(([i, j], idx) => {
+        const a = nodes[i];
+        const b = nodes[j];
+        const mid = a.clone().add(b).multiplyScalar(0.5);
+        mid.y += (idx % 2 === 0 ? 1 : -1) * 0.08;
+        mid.z += (idx % 3 === 0 ? 0.06 : -0.05);
+        const curve = new THREE.CatmullRomCurve3([a, mid, b]);
+        const mesh = new THREE.Mesh(new THREE.TubeGeometry(curve, 14, 0.078, 10, false), tubeMat);
+        g.add(mesh);
+      });
+
+      // Open tubular tips showing smooth hollow pipe cross-sections
+      const tipPositions = [
+        [nodes[3], new THREE.Vector3(0.95, 0.32, -0.22)],
+        [nodes[10], new THREE.Vector3(0.12, 0.85, -0.26)],
+        [nodes[11], new THREE.Vector3(-0.28, 0.72, 0.65)]
+      ];
+      tipPositions.forEach(([a, b]) => {
+        const curve = new THREE.CatmullRomCurve3([a, b]);
+        g.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 8, 0.072, 10, false), tubeMat));
+      });
+
+      g.scale.setScalar(scale);
+      return g;
+    }
+
+    /**
+     * 5.6 GOLGI APPARATUS (高尔基体：5层顺面→反面弧形膨大扁平囊 + 边缘出芽分泌囊泡)
+     */
+    function buildGolgi(scale = 1.0) {
+      const g = new THREE.Group();
+      const colors = [0xd97706, 0xea580c, 0xf59e0b, 0xfb923c, 0xfbbf24];
+      const bulbGeo = new THREE.SphereGeometry(0.115, 14, 12);
+
+      for (let i = 0; i < 5; i++) {
+        const t = i / 4; // 0 = cis, 1 = trans
+        const mat = physMat({
+          color: colors[i],
+          emissive: 0x9a3412,
+          emissiveIntensity: 0.22,
+          roughness: 0.28,
+          clearcoat: 0.5
+        });
+
+        // Cleanly spaced parallel crescent sacs: apex advances +0.22 along +X per layer!
+        const arcR = 1.16 - i * 0.07;
+        const cx = -1.58 + i * 0.29; // apex X = cx + arcR = -0.42, -0.20, +0.02, +0.24, +0.46
+        const halfSpan = 0.68 - Math.abs(t - 0.45) * 0.16;
+        const halfThick = 0.044;
+
+        // Watertight self-intersection-free curved crescent sac
+        const s = new THREE.Shape();
+        const rOut = arcR + halfThick;
+        const rIn = arcR - halfThick;
+        s.absarc(0, 0, rOut, -halfSpan, halfSpan, false);
+        s.absarc(Math.cos(halfSpan) * arcR, Math.sin(halfSpan) * arcR, halfThick, halfSpan, halfSpan + Math.PI, false);
+        s.absarc(0, 0, rIn, halfSpan, -halfSpan, true);
+        s.absarc(Math.cos(-halfSpan) * arcR, Math.sin(-halfSpan) * arcR, halfThick, -halfSpan + Math.PI, -halfSpan, false);
+        s.closePath();
+
+        const h = 0.52 - Math.abs(t - 0.5) * 0.14;
+        const geo = new THREE.ExtrudeGeometry(s, {
+          depth: h,
+          bevelEnabled: true,
+          bevelThickness: 0.024,
+          bevelSize: 0.016,
+          bevelSegments: 2,
+          curveSegments: 24
+        });
+        const sac = new THREE.Mesh(geo, mat);
+        sac.rotation.x = -Math.PI / 2;
+        sac.position.set(cx, -h * 0.5, 0);
+        g.add(sac);
+
+        // Swollen bulbous cisternae tips at both ends (iconic Golgi rim morphology!)
+        [-halfSpan, halfSpan].forEach((endA) => {
+          const ex = cx + Math.cos(endA) * arcR;
+          const ez = -Math.sin(endA) * arcR;
+          const bulb = new THREE.Mesh(bulbGeo, mat);
+          bulb.scale.set(1.0, h * 2.1, 1.0);
+          bulb.position.set(ex, 0, ez);
+          g.add(bulb);
+        });
+      }
+
+      // Budding & Secretory Vesicles (分泌囊泡) pinching off swollen rims & drifting outward
+      const vesMat = physMat({
+        color: 0xfde68a,
+        emissive: 0xd97706,
+        emissiveIntensity: 0.35,
+        roughness: 0.2,
+        clearcoat: 0.7
+      });
+      const vesicleSpecs = [
+        // Cis receiving vesicles (left / -X side)
+        [-0.74, 0.10, -0.52, 0.088], [-0.72, -0.10, 0.48, 0.082],
+        // Edge budding vesicles near swollen tips
+        [-0.18, 0.16, -0.82, 0.095], [-0.12, -0.14, 0.84, 0.092],
+        [0.24, 0.12, -0.74, 0.105], [0.28, -0.15, 0.72, 0.092],
+        // Trans secretory vesicles drifting outward (+X side)
+        [0.68, 0.14, -0.32, 0.118], [0.76, -0.06, 0.16, 0.13],
+        [0.95, 0.20, 0.42, 0.105], [0.96, -0.16, -0.14, 0.095],
+        [0.66, 0.34, 0.02, 0.086]
+      ];
+      vesicleSpecs.forEach(([x, y, z, r]) => {
+        const v = new THREE.Mesh(new THREE.SphereGeometry(r, 16, 14), vesMat);
+        v.position.set(x, y, z);
+        v.userData.floatPhase = Math.random() * Math.PI * 2;
+        v.userData.baseY = y;
+        g.add(v);
+      });
+
+      g.scale.setScalar(scale);
+      return g;
+    }
+
+    /**
+     * 5.7 RIBOSOME POLYSOME (多聚核糖体：清晰大亚基 60S + 小亚基 40S + mRNA 链 + 新生多肽链)
+     */
+    function buildRibosomeCluster(scale = 1.0, heroMode = false) {
+      const g = new THREE.Group();
+      const largeMat = physMat({
+        color: 0xec4899,
+        emissive: 0x9d174d,
+        emissiveIntensity: 0.28,
+        roughness: 0.3,
+        clearcoat: 0.45
+      });
+      const smallMat = physMat({
+        color: 0xfbcfe8,
+        emissive: 0xbe185d,
+        emissiveIntensity: 0.18,
+        roughness: 0.28,
+        clearcoat: 0.5
+      });
+      const mrnaMat = stdMat({
+        color: 0xfbbf24,
+        emissive: 0xb45309,
+        emissiveIntensity: 0.55,
+        roughness: 0.25
+      });
+      const peptideMat = stdMat({
+        color: 0x34d399,
+        emissive: 0x047857,
+        emissiveIntensity: 0.45,
+        roughness: 0.25
+      });
+
+      // Sinuous mRNA strand
+      const count = heroMode ? 4 : 5;
+      const pts = [];
+      for (let i = 0; i <= 16; i++) {
+        const t = i / 16;
+        const x = (t - 0.5) * (heroMode ? 2.4 : 0.92);
+        const y = Math.sin(t * Math.PI * 2.2) * (heroMode ? 0.22 : 0.09);
+        const z = Math.cos(t * Math.PI * 1.8) * (heroMode ? 0.32 : 0.14);
+        pts.push(new THREE.Vector3(x, y, z));
+      }
+      const curve = new THREE.CatmullRomCurve3(pts);
+      const mrna = new THREE.Mesh(
+        new THREE.TubeGeometry(curve, 44, heroMode ? 0.036 : 0.015, 8, false),
+        mrnaMat
+      );
+      g.add(mrna);
+
+      const unitScale = heroMode ? 2.4 : 1.0;
+
+      for (let i = 0; i < count; i++) {
+        const u = (i + 0.5) / count;
+        const pos = curve.getPoint(u);
+        const ribo = new THREE.Group();
+        ribo.position.copy(pos);
+        ribo.rotation.set(0.15 * Math.sin(i), i * 0.55, 0.12 * Math.cos(i));
+
+        // Large 60S Subunit (dome-like wider lower body)
+        const large = new THREE.Mesh(new THREE.SphereGeometry(0.105 * unitScale, 18, 16), largeMat);
+        large.scale.set(1.18, 0.88, 1.05);
+        large.position.y = -0.068 * unitScale;
+
+        // Small 40S Subunit (rounded cap perched above the mRNA groove!)
+        const small = new THREE.Mesh(new THREE.SphereGeometry(0.076 * unitScale, 16, 14), smallMat);
+        small.scale.set(1.22, 0.78, 0.92);
+        small.position.y = 0.062 * unitScale;
+
+        ribo.add(large, small);
+
+        // Emerging nascent polypeptide chain (elongating progressively along mRNA!)
+        const pepLen = (0.12 + u * 0.26) * unitScale;
+        const pepPts = [];
+        for (let k = 0; k <= 6; k++) {
+          const f = k / 6;
+          pepPts.push(new THREE.Vector3(
+            Math.sin(f * Math.PI * 2.5 + i) * 0.045 * unitScale,
+            0.08 * unitScale + f * pepLen,
+            Math.cos(f * Math.PI * 2.5 + i) * 0.045 * unitScale
+          ));
+        }
+        const pepCurve = new THREE.CatmullRomCurve3(pepPts);
+        const pep = new THREE.Mesh(
+          new THREE.TubeGeometry(pepCurve, 14, 0.014 * unitScale, 6, false),
+          peptideMat
+        );
+        ribo.add(pep);
+
+        g.add(ribo);
+      }
+
+      g.scale.setScalar(scale);
+      return g;
+    }
+
+    /**
+     * 5.8 CENTROSOME (动物细胞特有：一对 90° 互相垂直的中心粒，各由经典 9×3=27 根三联微管组成 + 放射星射线)
+     */
+    function buildCentrosome(scale = 1.0) {
+      const g = new THREE.Group();
+
+      const buildCentriole = (matA, matB) => {
+        const barrel = new THREE.Group();
+        const ringR = 0.20;
+        const tubeLen = 0.62;
+        const microR = 0.021;
+        const tubeGeo = new THREE.CylinderGeometry(microR, microR, tubeLen, 8);
+
+        // 9 triplets arranged in iconic pinwheel symmetry (9×3 = 27 microtubules!)
+        for (let i = 0; i < 9; i++) {
+          const angle = (i / 9) * Math.PI * 2;
+          const triplet = new THREE.Group();
+          triplet.position.set(Math.cos(angle) * ringR, 0, Math.sin(angle) * ringR);
+          triplet.rotation.y = -angle + 0.55; // pinwheel blade tilt!
+
+          for (let j = 0; j < 3; j++) {
+            const mt = new THREE.Mesh(tubeGeo, j === 1 ? matB : matA);
+            mt.position.x = (j - 1) * (microR * 1.92);
+            triplet.add(mt);
+          }
+          barrel.add(triplet);
+        }
+
+        // Subtle internal cartwheel hub rings at ends
+        const hubMat = stdMat({ color: 0xd9f99d, emissive: 0x4d7c0f, emissiveIntensity: 0.35, roughness: 0.35 });
+        [-0.22, 0.22].forEach((yOff) => {
+          const ring = new THREE.Mesh(new THREE.TorusGeometry(ringR * 0.72, 0.012, 6, 18), hubMat);
+          ring.rotation.x = Math.PI / 2;
+          ring.position.y = yOff;
+          barrel.add(ring);
+        });
+
+        return barrel;
+      };
+
+      const mtMat1 = physMat({ color: 0x84cc16, emissive: 0x3f6212, emissiveIntensity: 0.32, roughness: 0.28, clearcoat: 0.5 });
+      const mtMat2 = physMat({ color: 0xbef264, emissive: 0x4d7c0f, emissiveIntensity: 0.28, roughness: 0.25, clearcoat: 0.55 });
+
+      // Mother Centriole (vertical-tilted)
+      const c1 = buildCentriole(mtMat1, mtMat2);
+      c1.position.set(-0.24, 0.14, 0.08);
+      c1.rotation.set(0.22, 0.2, 0.12);
+      g.add(c1);
+
+      // Daughter Centriole (strictly perpendicular 90°!)
+      const c2 = buildCentriole(mtMat1, mtMat2);
+      c2.position.set(0.26, -0.14, -0.06);
+      c2.rotation.set(0.22, 0.2, 0.12 + Math.PI / 2);
+      g.add(c2);
+
+      // Soft pericentriolar material halo (中心体基质)
+      const halo = new THREE.Mesh(
+        new THREE.SphereGeometry(0.54, 24, 18),
+        stdMat({ color: 0xa3e635, transparent: true, opacity: 0.14, roughness: 0.2, depthWrite: false })
+      );
+      g.add(halo);
+
+      // Radiating Astral Microtubules (星射线)
+      const rayMat = stdMat({
+        color: 0xecfccb,
+        emissive: 0x84cc16,
+        emissiveIntensity: 0.45,
+        transparent: true,
+        opacity: 0.72
+      });
+      const rayDirs = [
+        [1, 0.6, 0.3], [-1, 0.7, 0.4], [0.4, 1, -0.5], [-0.5, 0.9, -0.6],
+        [0.9, -0.5, 0.6], [-0.9, -0.4, -0.5], [0.2, -0.8, -0.8], [-0.3, -0.7, 0.9],
+        [0.8, 0.2, -0.9], [-0.8, 0.3, 0.8], [0.5, 0.8, 0.7], [-0.7, -0.6, 0.4],
+        [0.1, 0.4, 1.0], [0.1, -0.3, -1.0]
+      ];
+      rayDirs.forEach((d, idx) => {
+        const v = new THREE.Vector3(...d).normalize();
+        const len = 0.85 + (idx % 3) * 0.22;
+        const start = v.clone().multiplyScalar(0.32);
+        const mid = v.clone().multiplyScalar(0.32 + len * 0.5).add(new THREE.Vector3(0, 0.05, 0));
+        const end = v.clone().multiplyScalar(0.32 + len);
+        const curve = new THREE.CatmullRomCurve3([start, mid, end]);
+        g.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 8, 0.011, 5, false), rayMat));
+      });
+
+      g.scale.setScalar(scale);
+      return g;
+    }
+
+    /**
+     * 5.9 LYSOSOME (动物细胞典型：3/4 球形剖面 + 耐酸单层膜 + 酸性腔室 + 多彩酸性水解酶球群)
+     */
+    function buildLysosome(radius = 0.50) {
+      const g = new THREE.Group();
+      const innerR = radius - 0.068;
+
+      const outerMat = physMat({
+        color: 0xe11d48,
+        emissive: 0x881337,
+        emissiveIntensity: 0.22,
+        roughness: 0.25,
+        clearcoat: 0.65,
+        side: THREE.FrontSide
+      });
+      const innerMat = stdMat({ color: 0x9f1239, roughness: 0.45, side: THREE.BackSide });
+      const rimMat = stdMat({ color: 0xfb7185, emissive: 0xbe123c, emissiveIntensity: 0.28, side: THREE.DoubleSide });
+
+      // 7/8 cutaway sphere (open +X,+Y,+Z octant facing camera)
+      g.add(
+        new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 18, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), outerMat),
+        new THREE.Mesh(new THREE.SphereGeometry(innerR, 28, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), innerMat),
+        new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 18, Math.PI, Math.PI * 1.5, 0, Math.PI / 2), outerMat),
+        new THREE.Mesh(new THREE.SphereGeometry(innerR, 28, 16, Math.PI, Math.PI * 1.5, 0, Math.PI / 2), innerMat)
+      );
+
+      // Seal 3 octant cross-section edges
+      const rXZ = new THREE.Mesh(new THREE.RingGeometry(innerR, radius, 22, 1, 0, Math.PI / 2), rimMat);
+      rXZ.rotation.x = Math.PI / 2;
+      const rXY = new THREE.Mesh(new THREE.RingGeometry(innerR, radius, 22, 1, 0, Math.PI / 2), rimMat);
+      const rYZ = new THREE.Mesh(new THREE.RingGeometry(innerR, radius, 22, 1, 0, Math.PI / 2), rimMat);
+      rYZ.rotation.y = -Math.PI / 2;
+      g.add(rXZ, rXY, rYZ);
+
+      // Translucent acidic interior glow
+      g.add(new THREE.Mesh(
+        new THREE.SphereGeometry(innerR - 0.02, 22, 16),
+        stdMat({ color: 0xfda4af, transparent: true, opacity: 0.26, roughness: 0.2, depthWrite: false })
+      ));
+
+      // Hydrolytic Enzymes (酸性水解酶复合体) suspended inside!
+      const enzymeColors = [0xfde047, 0xfb923c, 0x38bdf8, 0xf472b6, 0x4ade80];
+      const enzGeo1 = new THREE.IcosahedronGeometry(radius * 0.125, 0);
+      const enzGeo2 = new THREE.SphereGeometry(radius * 0.105, 10, 10);
+
+      const enzCoords = [
+        [0, 0, 0], [0.35, 0.22, 0.28], [-0.28, 0.18, 0.25], [0.22, -0.26, 0.28],
+        [-0.25, -0.25, -0.15], [0.18, 0.34, -0.22], [-0.36, -0.05, 0.08],
+        [0.05, -0.35, -0.18], [0.38, -0.08, -0.18], [-0.08, 0.35, 0.28],
+        [0.24, 0.12, -0.35], [-0.15, -0.12, 0.40]
+      ];
+      enzCoords.forEach((c, idx) => {
+        const m = new THREE.Mesh(
+          idx % 2 === 0 ? enzGeo1 : enzGeo2,
+          stdMat({
+            color: enzymeColors[idx % enzymeColors.length],
+            emissive: enzymeColors[idx % enzymeColors.length],
+            emissiveIntensity: 0.35,
+            roughness: 0.25
+          })
+        );
+        m.position.set(c[0] * radius * 0.72, c[1] * radius * 0.72, c[2] * radius * 0.72);
+        m.rotation.set(idx, idx * 0.7, 0);
+        g.add(m);
+      });
+
+      return g;
+    }
+
+    /**
+     * 5.10 PEROXISOME (过氧化物酶体：单层膜 7/8 剖面 + 中央标志性菱形晶体核心！)
+     */
+    function buildPeroxisome(radius = 0.45) {
+      const g = new THREE.Group();
+      const innerR = radius - 0.062;
+
+      const outerMat = physMat({
+        color: 0x7c3aed,
+        emissive: 0x4c1d95,
+        emissiveIntensity: 0.22,
+        roughness: 0.26,
+        clearcoat: 0.65,
+        side: THREE.FrontSide
+      });
+      const innerMat = stdMat({ color: 0x4c1d95, roughness: 0.45, side: THREE.BackSide });
+      const rimMat = stdMat({ color: 0xc4b5fd, emissive: 0x5b21b6, emissiveIntensity: 0.3, side: THREE.DoubleSide });
+
+      g.add(
+        new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 18, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), outerMat),
+        new THREE.Mesh(new THREE.SphereGeometry(innerR, 28, 16, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), innerMat),
+        new THREE.Mesh(new THREE.SphereGeometry(radius, 32, 18, Math.PI, Math.PI * 1.5, 0, Math.PI / 2), outerMat),
+        new THREE.Mesh(new THREE.SphereGeometry(innerR, 28, 16, Math.PI, Math.PI * 1.5, 0, Math.PI / 2), innerMat)
+      );
+
+      const rXZ = new THREE.Mesh(new THREE.RingGeometry(innerR, radius, 22, 1, 0, Math.PI / 2), rimMat);
+      rXZ.rotation.x = Math.PI / 2;
+      const rXY = new THREE.Mesh(new THREE.RingGeometry(innerR, radius, 22, 1, 0, Math.PI / 2), rimMat);
+      const rYZ = new THREE.Mesh(new THREE.RingGeometry(innerR, radius, 22, 1, 0, Math.PI / 2), rimMat);
+      rYZ.rotation.y = -Math.PI / 2;
+      g.add(rXZ, rXY, rYZ);
+
+      // Iconic Crystalline Core (尿酸氧化酶类核体结晶)
+      const crystal = new THREE.Mesh(
+        new THREE.OctahedronGeometry(radius * 0.48, 0),
+        physMat({
+          color: 0xe0f2fe,
+          emissive: 0x38bdf8,
+          emissiveIntensity: 0.52,
+          roughness: 0.12,
+          metalness: 0.18,
+          clearcoat: 1.0,
+          flatShading: true
+        })
+      );
+      crystal.scale.set(1.15, 0.92, 0.96);
+      crystal.rotation.set(0.35, 0.55, 0.2);
+      g.add(crystal);
+
+      // Catalase granules surrounding crystal
+      const granGeo = new THREE.SphereGeometry(radius * 0.068, 8, 8);
+      const granMat = stdMat({ color: 0xa78bfa, emissive: 0x7c3aed, emissiveIntensity: 0.4 });
+      [
+        [0.45, 0.25, 0.35], [-0.35, 0.32, 0.28], [0.35, -0.32, 0.25],
+        [-0.25, -0.35, -0.15], [0.22, 0.38, -0.25], [-0.42, -0.08, 0.12]
+      ].forEach((p) => {
+        const gr = new THREE.Mesh(granGeo, granMat);
+        gr.position.set(p[0] * radius * 0.75, p[1] * radius * 0.75, p[2] * radius * 0.75);
+        g.add(gr);
+      });
+
+      return g;
+    }
+
+    /**
+     * 5.11 CENTRAL LARGE VACUOLE (高等植物特有：晶莹柔润的巨大单层液泡膜 + 细胞液微粒)
+     */
+    function buildCentralVacuole(scale = 1.0) {
+      const g = new THREE.Group();
+
+      // Organic sculpted pillow/kidney geometry (deformed high-res sphere)
+      const geo = new THREE.SphereGeometry(1, 44, 34);
+      const pos = geo.attributes.position;
+      for (let i = 0; i < pos.count; i++) {
+        let x = pos.getX(i);
+        let y = pos.getY(i);
+        let z = pos.getZ(i);
+
+        // Stretch into generous plant vacuole pillow
+        x *= 1.48;
+        y *= 0.96;
+        z *= 1.38;
+
+        // Gentle organic kidney indentation on -X side (cradling the plant nucleus!)
+        if (x < 0) {
+          const indent = Math.exp(-((z + 0.35) * (z + 0.35)) * 0.8) * 0.24;
+          x += indent;
+        }
+        // Soft pillowy undulation
+        const wave = 1 + 0.045 * Math.sin(x * 2.1 + z * 1.6) + 0.03 * Math.cos(y * 3.0);
+        pos.setXYZ(i, x * wave, y * wave, z * wave);
+      }
+      geo.computeVertexNormals();
+
+      // Tonoplast outer glossy translucent shell
+      const tonoplastMat = physMat({
+        color: 0x38bdf8,
+        emissive: 0x0369a1,
+        emissiveIntensity: 0.28,
+        transparent: true,
+        opacity: 0.44,
+        roughness: 0.12,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.08,
+        depthWrite: false,
+        side: THREE.DoubleSide
+      });
+      const outer = new THREE.Mesh(geo, tonoplastMat);
+      outer.renderOrder = 2;
+      g.add(outer);
+
+      // Subtle inner watery shimmer volume
+      const inner = new THREE.Mesh(
+        geo,
+        stdMat({
+          color: 0xbae6fd,
+          emissive: 0x0ea5e9,
+          emissiveIntensity: 0.18,
+          transparent: true,
+          opacity: 0.18,
+          roughness: 0.15,
+          depthWrite: false
+        })
+      );
+      inner.scale.setScalar(0.91);
+      inner.renderOrder = 1;
+      g.add(inner);
+
+      // Suspended solute & anthocyanin pigment sparkles inside cell sap
+      const sparkColors = [0xe0f2fe, 0x7dd3fc, 0xf472b6, 0xc084fc];
+      const sparkGeo = new THREE.SphereGeometry(0.042, 8, 8);
+      for (let i = 0; i < 28; i++) {
+        const a = (i / 28) * Math.PI * 2 * 3.1;
+        const r = 0.22 + (i % 7) * 0.13;
+        const y = ((i % 5) - 2) * 0.25;
+        const sp = new THREE.Mesh(
+          sparkGeo,
+          stdMat({
+            color: sparkColors[i % sparkColors.length],
+            emissive: sparkColors[i % sparkColors.length],
+            emissiveIntensity: 0.55,
+            roughness: 0.2
+          })
+        );
+        sp.position.set(Math.cos(a) * r * 1.15, y, Math.sin(a) * r * 1.05);
+        sp.userData.floatPhase = i * 0.7;
+        sp.userData.baseY = y;
+        g.add(sp);
+      }
+
+      g.scale.setScalar(scale);
+      return g;
+    }
+
+    /**
+     * 5.12 ANIMAL CELL MEMBRANE (圆润有机剖面碗 + 清晰磷脂双分子层切面 + 跨膜通道蛋白 + 糖蛋白 + 可选半透明穹顶)
+     */
+    function buildAnimalMembrane() {
+      const g = new THREE.Group();
+      const Rx = 5.35, Ry = 3.55, Rz = 4.95;
+      const wallT = 0.20;
+
+      // Custom sculpted open-bowl shell with slight front dip (ergonomic amphitheater cutaway!)
+      const buildBowlShell = (rx, ry, rz, mat, isOuter) => {
+        const uSegs = 64, vSegs = 26;
+        const positions = [];
+        const indices = [];
+
+        for (let iv = 0; iv <= vSegs; iv++) {
+          const v = iv / vSegs; // 0 = bottom pole, 1 = cutaway rim
+          for (let iu = 0; iu <= uSegs; iu++) {
+            const u = (iu / uSegs) * Math.PI * 2;
+            // Rim tilts gently: higher at back (-Z, theta ≈ 0.40*PI), lower at front (+Z, theta ≈ 0.58*PI)
+            const rimTheta = Math.PI * (0.49 + 0.08 * Math.sin(u));
+            const theta = Math.PI - v * (Math.PI - rimTheta);
+            // Very subtle organic contour
+            const org = 1 + 0.022 * Math.sin(u * 3 + 0.4) + 0.014 * Math.cos(u * 5);
+            const x = rx * org * Math.sin(theta) * Math.cos(u);
+            const y = ry * Math.cos(theta);
+            const z = rz * org * Math.sin(theta) * Math.sin(u);
+            positions.push(x, y, z);
+          }
+        }
+
+        for (let iv = 0; iv < vSegs; iv++) {
+          for (let iu = 0; iu < uSegs; iu++) {
+            const a = iv * (uSegs + 1) + iu;
+            const b = a + 1;
+            const c = (iv + 1) * (uSegs + 1) + iu;
+            const d = c + 1;
+            if (isOuter) {
+              indices.push(a, c, b, b, c, d);
+            } else {
+              indices.push(a, b, c, b, d, c);
+            }
+          }
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+        geo.setIndex(indices);
+        geo.computeVertexNormals();
+        return new THREE.Mesh(geo, mat);
+      };
+
+      const outerMat = physMat({
+        color: 0xd97706,
+        emissive: 0x78350f,
+        emissiveIntensity: 0.18,
+        roughness: 0.32,
+        clearcoat: 0.65,
+        bumpMap: TEX_ORGANIC_BUMP,
+        bumpScale: 0.025,
+        side: THREE.DoubleSide
+      });
+      const innerMat = stdMat({
+        color: 0xf59e0b,
+        roughness: 0.42,
+        side: THREE.DoubleSide
+      });
+
+      const outerBowl = buildBowlShell(Rx, Ry, Rz, outerMat, true);
+      const innerBowl = buildBowlShell(Rx - wallT, Ry - wallT * 0.85, Rz - wallT, innerMat, false);
+      outerBowl.userData.isShellWall = true;
+      innerBowl.userData.isShellWall = true;
+      g.add(outerBowl, innerBowl);
+
+      // Phospholipid Bilayer Rim Strip connecting outer and inner rim edges!
+      const uSegs = 72;
+      const rimPositions = [];
+      const rimIndices = [];
+      const outerRimPts = [];
+      const innerRimPts = [];
+
+      for (let iu = 0; iu <= uSegs; iu++) {
+        const u = (iu / uSegs) * Math.PI * 2;
+        const rimTheta = Math.PI * (0.49 + 0.08 * Math.sin(u));
+        const org = 1 + 0.022 * Math.sin(u * 3 + 0.4) + 0.014 * Math.cos(u * 5);
+
+        const ox = Rx * org * Math.sin(rimTheta) * Math.cos(u);
+        const oy = Ry * Math.cos(rimTheta);
+        const oz = Rz * org * Math.sin(rimTheta) * Math.sin(u);
+
+        const ix = (Rx - wallT) * org * Math.sin(rimTheta) * Math.cos(u);
+        const iy = (Ry - wallT * 0.85) * Math.cos(rimTheta);
+        const iz = (Rz - wallT) * org * Math.sin(rimTheta) * Math.sin(u);
+
+        rimPositions.push(ox, oy, oz, ix, iy, iz);
+        if (iu < uSegs) {
+          outerRimPts.push(new THREE.Vector3(ox, oy, oz));
+          innerRimPts.push(new THREE.Vector3(ix, iy, iz));
+        }
+      }
+      for (let iu = 0; iu < uSegs; iu++) {
+        const a = iu * 2;
+        const b = a + 1;
+        const c = a + 2;
+        const d = a + 3;
+        rimIndices.push(a, b, c, b, d, c);
+      }
+      const rimGeo = new THREE.BufferGeometry();
+      rimGeo.setAttribute('position', new THREE.Float32BufferAttribute(rimPositions, 3));
+      rimGeo.setIndex(rimIndices);
+      rimGeo.computeVertexNormals();
+      const rimMesh = new THREE.Mesh(
+        rimGeo,
+        stdMat({ color: 0xfde68a, emissive: 0xb45309, emissiveIntensity: 0.3, roughness: 0.3, side: THREE.DoubleSide })
+      );
+      g.add(rimMesh);
+
+      // Visible Phospholipid Heads along the bilayer rim (outer & inner beaded lines)
+      const headGeo = new THREE.SphereGeometry(0.052, 7, 7);
+      const headMat = stdMat({ color: 0xfbbf24, emissive: 0x92400e, emissiveIntensity: 0.25, roughness: 0.3 });
+      for (let i = 0; i < uSegs; i += 2) {
+        const h1 = new THREE.Mesh(headGeo, headMat);
+        h1.position.copy(outerRimPts[i]).add(new THREE.Vector3(0, 0.03, 0));
+        const h2 = new THREE.Mesh(headGeo, headMat);
+        h2.position.copy(innerRimPts[i]).add(new THREE.Vector3(0, 0.03, 0));
+        g.add(h1, h2);
+      }
+
+      // Transmembrane Channel Proteins (跨膜通道蛋白) & Glycoproteins (糖蛋白) embedded along rim!
+      const protMat = physMat({ color: 0x38bdf8, emissive: 0x0369a1, emissiveIntensity: 0.35, roughness: 0.25, clearcoat: 0.6 });
+      const glycoMat = stdMat({ color: 0xfb7185, emissive: 0x9f1239, emissiveIntensity: 0.35, roughness: 0.3 });
+      const yAxis = new THREE.Vector3(0, 1, 0);
+
+      for (let i = 0; i < 16; i++) {
+        const idx = Math.floor((i / 16) * uSegs);
+        const pOut = outerRimPts[idx];
+        const pIn = innerRimPts[idx];
+        const mid = pOut.clone().add(pIn).multiplyScalar(0.5);
+        const outward = pOut.clone().sub(pIn).normalize();
+
+        const prot = new THREE.Group();
+        prot.position.copy(mid);
+        prot.quaternion.setFromUnitVectors(yAxis, outward);
+
+        // Channel protein barrel spanning the bilayer
+        const barrel = new THREE.Mesh(new THREE.CylinderGeometry(0.11, 0.11, wallT + 0.16, 12, 1, false), protMat);
+        prot.add(barrel);
+
+        // Every other protein carries branching coral glycoprotein chains on outer face!
+        if (i % 2 === 0) {
+          for (let b = -1; b <= 1; b += 2) {
+            const branch = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.022, 0.22, 6), glycoMat);
+            branch.position.set(b * 0.06, wallT * 0.5 + 0.15, 0);
+            branch.rotation.z = -b * 0.45;
+            const tip = new THREE.Mesh(new THREE.SphereGeometry(0.042, 8, 8), glycoMat);
+            tip.position.set(b * 0.12, wallT * 0.5 + 0.24, 0);
+            prot.add(branch, tip);
+          }
+        }
+        g.add(prot);
+      }
+
+      // Ultra-sheer Fresnel Ghost Upper Dome matching exact rimTheta(u) seamlessly!
+      const buildGhostDome = () => {
+        const uS = 56, vS = 18;
+        const pos = [];
+        const idx = [];
+        for (let iv = 0; iv <= vS; iv++) {
+          const v = iv / vS; // 0 = top pole, 1 = rimTheta
+          for (let iu = 0; iu <= uS; iu++) {
+            const u = (iu / uS) * Math.PI * 2;
+            const rimTheta = Math.PI * (0.49 + 0.08 * Math.sin(u));
+            const theta = v * rimTheta;
+            const org = 1 + 0.022 * Math.sin(u * 3 + 0.4) + 0.014 * Math.cos(u * 5);
+            pos.push(
+              Rx * org * Math.sin(theta) * Math.cos(u),
+              Ry * Math.cos(theta),
+              Rz * org * Math.sin(theta) * Math.sin(u)
+            );
+          }
+        }
+        for (let iv = 0; iv < vS; iv++) {
+          for (let iu = 0; iu < uS; iu++) {
+            const a = iv * (uS + 1) + iu;
+            const b = a + 1;
+            const c = (iv + 1) * (uS + 1) + iu;
+            const d = c + 1;
+            idx.push(a, b, c, b, d, c);
+          }
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        geo.setIndex(idx);
+        geo.computeVertexNormals();
+        return new THREE.Mesh(
+          geo,
+          physMat({
+            color: 0x7dd3fc,
+            transparent: true,
+            opacity: 0.075,
+            roughness: 0.08,
+            clearcoat: 1.0,
+            depthWrite: false,
+            side: THREE.FrontSide
+          })
+        );
+      };
+      const ghostDome = buildGhostDome();
+      ghostDome.renderOrder = 5;
+      ghostDome.userData.isGhostDome = true;
+      g.add(ghostDome);
+
+      return g;
+    }
+
+    /**
+     * 5.13 HIGHER PLANT CELL WALL & PLASMODESMATA + INNER CELL MEMBRANE
+     * Architectural stepped hexagonal prism cutaway!
+     */
+    function makeHexagonPoints(radius, cornerChamfer = 0.16) {
+      // Rounded/chamfered regular hexagon (flat-top / balanced orientation)
+      const pts = [];
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + Math.PI / 6;
+        pts.push(new THREE.Vector2(Math.cos(a) * radius, Math.sin(a) * radius));
+      }
+      const shape = new THREE.Shape();
+      for (let i = 0; i < 6; i++) {
+        const prev = pts[(i + 5) % 6];
+        const curr = pts[i];
+        const next = pts[(i + 1) % 6];
+        const p1 = curr.clone().lerp(prev, cornerChamfer);
+        const p2 = curr.clone().lerp(next, cornerChamfer);
+        if (i === 0) shape.moveTo(p1.x, p1.y);
+        else shape.lineTo(p1.x, p1.y);
+        shape.quadraticCurveTo(curr.x, curr.y, p2.x, p2.y);
+      }
+      shape.closePath();
+      return shape;
+    }
+
+    function buildSteppedHexWallMesh(rOut, rIn, yBottom, yFront, yBack, wallMat, capMat) {
+      // Sample closed smooth hexagon contour (96 points) and construct watertight stepped wall!
+      const outerShape = makeHexagonPoints(rOut, 0.18);
+      const innerShape = makeHexagonPoints(rIn, 0.18);
+      const N = 96;
+      const oPts = outerShape.getSpacedPoints(N);
+      const iPts = innerShape.getSpacedPoints(N);
+
+      const heightAt = (pt) => {
+        // Note: shape (x, y) maps to world (x, z = y)
+        // Smooth stepped architectural cutaway: tall in back (z < -0.6), open low ledge in front (z > 1.2)
+        const t = THREE.MathUtils.clamp((1.15 - pt.y) / 2.6, 0, 1);
+        const smooth = t * t * (3 - 2 * t);
+        return yFront + (yBack - yFront) * smooth;
+      };
+
+      const g = new THREE.Group();
+
+      // Side ribbon builder helper
+      const buildRibbon = (ptsA, yAfn, ptsB, yBfn, flip, mat) => {
+        const pos = [];
+        const idx = [];
+        for (let i = 0; i <= N; i++) {
+          const pA = ptsA[i % N];
+          const pB = ptsB[i % N];
+          pos.push(pA.x, yAfn(pA), pA.y);
+          pos.push(pB.x, yBfn(pB), pB.y);
+        }
+        for (let i = 0; i < N; i++) {
+          const a = i * 2, b = a + 1, c = a + 2, d = a + 3;
+          if (!flip) idx.push(a, c, b, b, c, d);
+          else idx.push(a, b, c, b, d, c);
+        }
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+        geo.setIndex(idx);
+        geo.computeVertexNormals();
+        return new THREE.Mesh(geo, mat);
+      };
+
+      // Outer vertical wall
+      g.add(buildRibbon(oPts, () => yBottom, oPts, heightAt, false, wallMat));
+      // Inner vertical wall
+      g.add(buildRibbon(iPts, () => yBottom, iPts, heightAt, true, wallMat));
+      // Stepped top cutaway cross-section cap
+      g.add(buildRibbon(oPts, heightAt, iPts, heightAt, true, capMat));
+
+      // Floor slab
+      const floorGeo = new THREE.ExtrudeGeometry(outerShape, {
+        depth: 0.42,
+        bevelEnabled: true,
+        bevelThickness: 0.06,
+        bevelSize: 0.05,
+        bevelSegments: 2
+      });
+      const floor = new THREE.Mesh(floorGeo, wallMat);
+      floor.rotation.x = Math.PI / 2;
+      floor.position.y = yBottom + 0.36;
+      g.add(floor);
+
+      return g;
+    }
+
+    function buildPlantCellWall() {
+      const g = new THREE.Group();
+      const R_OUT = 5.75;
+      const R_IN = 5.22;
+      const Y_BOT = -2.35;
+      const Y_FRONT = -0.35;
+      const Y_BACK = 2.05;
+
+      const wallMat = physMat({
+        color: 0x266c49,
+        emissive: 0x0c3522,
+        emissiveIntensity: 0.16,
+        roughness: 0.48,
+        clearcoat: 0.25,
+        bumpMap: TEX_CELLULOSE_BUMP,
+        bumpScale: 0.045,
+        side: THREE.DoubleSide
+      });
+      const cutCapMat = stdMat({
+        color: 0x4ea874,
+        emissive: 0x14532d,
+        emissiveIntensity: 0.22,
+        roughness: 0.38,
+        side: THREE.DoubleSide
+      });
+
+      const body = buildSteppedHexWallMesh(R_OUT, R_IN, Y_BOT, Y_FRONT, Y_BACK, wallMat, cutCapMat);
+      body.traverse((m) => { if (m.isMesh) m.userData.isShellWall = true; });
+      g.add(body);
+
+      // Middle Lamella (胞间层/果胶层) crisp bright-olive outer trim rim along upper edge
+      const outerShape = makeHexagonPoints(R_OUT + 0.04, 0.18);
+      const pts = outerShape.getSpacedPoints(72).slice(0, 72);
+      const rimCurvePts = pts.map((p) => {
+        const t = THREE.MathUtils.clamp((1.15 - p.y) / 2.6, 0, 1);
+        const smooth = t * t * (3 - 2 * t);
+        return new THREE.Vector3(p.x, Y_FRONT + (Y_BACK - Y_FRONT) * smooth + 0.02, p.y);
+      });
+      const lamellaCurve = new THREE.CatmullRomCurve3(rimCurvePts, true);
+      const lamellaTrim = new THREE.Mesh(
+        new THREE.TubeGeometry(lamellaCurve, 120, 0.055, 8, true),
+        stdMat({ color: 0x84cc16, emissive: 0x3f6212, emissiveIntensity: 0.3, roughness: 0.35 })
+      );
+      g.add(lamellaTrim);
+
+      // Plasmodesmata (胞间连丝) — golden cytoplasmic channel pores piercing through the cell wall!
+      const plasmoMat = stdMat({
+        color: 0xfacc15,
+        emissive: 0xca8a04,
+        emissiveIntensity: 0.55,
+        roughness: 0.25
+      });
+      const poreRimMat = stdMat({ color: 0x86efac, roughness: 0.4 });
+      const yAxis = new THREE.Vector3(0, 1, 0);
+
+      for (let face = 0; face < 6; face++) {
+        const ang = (face / 6) * Math.PI * 2 + Math.PI / 3; // face normal angle
+        const dir = new THREE.Vector3(Math.cos(ang), 0, Math.sin(ang));
+        const tang = new THREE.Vector3(-Math.sin(ang), 0, Math.cos(ang));
+        const apothem = ((R_OUT + R_IN) * 0.5) * Math.cos(Math.PI / 6);
+
+        // Place 3 plasmodesmata channels per face at heights that fit within the wall
+        const offsets = [-1.25, 0, 1.25];
+        offsets.forEach((off, idx) => {
+          const basePos = dir.clone().multiplyScalar(apothem).addScaledVector(tang, off);
+          const t = THREE.MathUtils.clamp((1.15 - basePos.z) / 2.6, 0, 1);
+          const smooth = t * t * (3 - 2 * t);
+          const wallTop = Y_FRONT + (Y_BACK - Y_FRONT) * smooth;
+          const yPos = Math.min(wallTop - 0.35, -1.15 + (idx % 2) * 0.85 + smooth * 1.1);
+
+          const channel = new THREE.Group();
+          channel.position.set(basePos.x, yPos, basePos.z);
+          channel.quaternion.setFromUnitVectors(yAxis, dir);
+
+          // Golden cytoplasmic strand piercing through the wall
+          const tunnel = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.052, 0.62, 10), plasmoMat);
+          // Collar rings on outer & inner faces of wall
+          const outerRing = new THREE.Mesh(new THREE.TorusGeometry(0.088, 0.026, 7, 14), poreRimMat);
+          outerRing.rotation.x = Math.PI / 2;
+          outerRing.position.y = 0.27;
+          const innerRing = outerRing.clone();
+          innerRing.position.y = -0.27;
+          channel.add(tunnel, outerRing, innerRing);
+          g.add(channel);
+        });
+      }
+
+      return g;
+    }
+
+    function buildPlantInnerMembrane() {
+      const g = new THREE.Group();
+      const memMat = physMat({
+        color: 0xeab308,
+        emissive: 0x854d0e,
+        emissiveIntensity: 0.24,
+        roughness: 0.3,
+        clearcoat: 0.55,
+        side: THREE.DoubleSide
+      });
+      const capMat = stdMat({
+        color: 0xfef08a,
+        emissive: 0xa16207,
+        emissiveIntensity: 0.35,
+        roughness: 0.28,
+        side: THREE.DoubleSide
+      });
+
+      const body = buildSteppedHexWallMesh(5.16, 5.02, -1.98, -0.30, 1.98, memMat, capMat);
+      body.traverse((m) => { if (m.isMesh) m.userData.isShellWall = true; });
+      g.add(body);
+      return g;
+    }
+
+    /**
+     * 5.14 CYTOPLASM & CYTOSKELETON (半透明胶质基底 + 精细微管/微丝三维支撑网架)
+     */
+    function buildCytoplasmAndSkeleton(mode) {
+      const g = new THREE.Group();
+
+      // Soft translucent cytosol fill bed
+      if (mode === 'animal') {
+        const bed = new THREE.Mesh(
+          new THREE.SphereGeometry(1, 44, 18, 0, Math.PI * 2, Math.PI * 0.59, Math.PI * 0.41),
+          stdMat({
+            color: 0x1e4d6b,
+            emissive: 0x0c2d48,
+            emissiveIntensity: 0.3,
+            transparent: true,
+            opacity: 0.34,
+            roughness: 0.25,
+            depthWrite: false,
+            side: THREE.DoubleSide
+          })
+        );
+        bed.scale.set(5.05, 3.25, 4.65);
+        bed.renderOrder = 1;
+        g.add(bed);
+      } else {
+        const hexShape = makeHexagonPoints(4.94, 0.18);
+        const bed = new THREE.Mesh(
+          new THREE.ExtrudeGeometry(hexShape, { depth: 1.24, bevelEnabled: false }),
+          stdMat({
+            color: 0x134e4a,
+            emissive: 0x092c2b,
+            emissiveIntensity: 0.28,
+            transparent: true,
+            opacity: 0.30,
+            roughness: 0.25,
+            depthWrite: false
+          })
+        );
+        bed.rotation.x = Math.PI / 2;
+        bed.position.y = -0.36;
+        bed.renderOrder = 1;
+        g.add(bed);
+      }
+
+      // Cytoskeleton Filaments: Microtubules (teal) & Microfilaments (soft white-cyan)
+      const mtMat = stdMat({
+        color: 0x2dd4bf,
+        emissive: 0x0f766e,
+        emissiveIntensity: 0.45,
+        transparent: true,
+        opacity: 0.62,
+        roughness: 0.3
+      });
+      const mfMat = stdMat({
+        color: 0xe2e8f0,
+        emissive: 0x64748b,
+        emissiveIntensity: 0.35,
+        transparent: true,
+        opacity: 0.45,
+        roughness: 0.35
+      });
+
+      const radius = mode === 'animal' ? 4.35 : 4.25;
+      const yFloor = mode === 'animal' ? -1.45 : -1.25;
+
+      for (let i = 0; i < 16; i++) {
+        const a1 = (i / 16) * Math.PI * 2;
+        const a2 = a1 + Math.PI * (0.68 + (i % 3) * 0.18);
+        const p1 = new THREE.Vector3(Math.cos(a1) * radius * 0.92, yFloor + 0.55 + (i % 3) * 0.22, Math.sin(a1) * radius * 0.86);
+        const pMid = new THREE.Vector3(
+          Math.cos((a1 + a2) * 0.5) * radius * 0.38,
+          yFloor - 0.15 + (i % 4) * 0.22,
+          Math.sin((a1 + a2) * 0.5) * radius * 0.38
+        );
+        const p2 = new THREE.Vector3(Math.cos(a2) * radius * 0.92, yFloor + 0.45 + ((i + 1) % 3) * 0.22, Math.sin(a2) * radius * 0.86);
+
+        const curve = new THREE.CatmullRomCurve3([p1, pMid, p2]);
+        const isMT = i % 2 === 0;
+        const mesh = new THREE.Mesh(
+          new THREE.TubeGeometry(curve, 20, isMT ? 0.024 : 0.013, 6, false),
+          isMT ? mtMat : mfMat
+        );
+        g.add(mesh);
+      }
+
+      return g;
+    }
+
+    /* =========================================================================
+       6. Assemble Complete Animal Cell & Higher Plant Cell Scenes
+       ========================================================================= */
+    function buildAnimalCellScene() {
+      const root = new THREE.Group();
+      const orgMap = {}; // orgId -> { instances: [], anchor: Vec3, labelOffset: Vec3, focusDist }
+
+      const register = (orgId, group, anchorPos, explodeDir, focusDist = 4.6) => {
+        tagOrganelle(group, orgId);
+        group.userData.basePos = group.position.clone();
+        group.userData.explodeVec = explodeDir.clone();
+        root.add(group);
+        if (!orgMap[orgId]) {
+          orgMap[orgId] = { instances: [], anchor: anchorPos.clone(), baseAnchor: anchorPos.clone(), explodeVec: explodeDir.clone(), focusDist };
+        }
+        orgMap[orgId].instances.push(group);
+      };
+
+      // 1. Plasma Membrane
+      const membrane = buildAnimalMembrane();
+      register('membrane', membrane, new THREE.Vector3(4.55, 0.25, 2.35), new THREE.Vector3(0, -1.65, 0), 11.5);
+
+      // 2. Cytoplasm & Cytoskeleton
+      const cytoplasm = buildCytoplasmAndSkeleton('animal');
+      register('cytoplasm', cytoplasm, new THREE.Vector3(-4.05, -0.35, 1.85), new THREE.Vector3(0, -1.15, 0), 10.5);
+
+      // 3. Nucleus (central-back-left, open octant facing viewer!)
+      const nucleus = buildNucleus(1.48);
+      nucleus.position.set(-0.45, 0.62, -0.62);
+      nucleus.rotation.y = 0.22;
+      register('nucleus', nucleus, new THREE.Vector3(-0.45, 1.95, -0.55), new THREE.Vector3(-0.25, 2.25, -0.45), 5.0);
+
+      // 4. Rough ER (concentric blue cisternae studded with golden ribosomes hugging nucleus)
+      const roughER = buildRoughER(Math.PI * 1.18, 1.68, 0.98);
+      roughER.position.set(-0.45, 0.28, -0.62);
+      roughER.rotation.y = Math.PI * 0.42; // wraps cleanly around back-left & back-right of nucleus!
+      register('roughER', roughER, new THREE.Vector3(-1.85, 1.10, -2.55), new THREE.Vector3(-1.35, 1.15, -2.05), 5.6);
+
+      // 5. Smooth ER (branching smooth cyan tubules off right-back wing of Rough ER)
+      const smoothER = buildSmoothER(1.12);
+      smoothER.position.set(2.55, 0.22, -1.65);
+      smoothER.rotation.y = -0.4;
+      register('smoothER', smoothER, new THREE.Vector3(2.65, 1.05, -1.65), new THREE.Vector3(2.45, 1.05, -1.65), 4.4);
+
+      // 6. Golgi Apparatus (front-right amber stack with budding vesicles)
+      const golgi = buildGolgi(1.08);
+      golgi.position.set(2.65, 0.34, 1.15);
+      golgi.rotation.y = -0.35;
+      register('golgi', golgi, new THREE.Vector3(2.75, 1.08, 1.15), new THREE.Vector3(2.55, 1.15, 1.35), 4.4);
+
+      // 7. Mitochondria × 3 (Hero #1 tilted cleanly toward camera to reveal cristae!)
+      const mito1 = buildMitochondrion(1.08);
+      mito1.position.set(0.15, 0.22, 2.55);
+      mito1.rotation.set(0.28, -0.32, 0.08);
+      register('mitochondrion', mito1, new THREE.Vector3(0.15, 0.92, 2.55), new THREE.Vector3(0.25, 1.05, 2.45), 4.0);
+
+      const mito2 = buildMitochondrion(0.88);
+      mito2.position.set(-3.35, 0.14, -0.78);
+      mito2.rotation.set(0.22, 1.15, -0.1);
+      register('mitochondrion', mito2, new THREE.Vector3(0.15, 0.92, 2.55), new THREE.Vector3(-2.65, 0.95, -0.65), 4.0);
+
+      const mito3 = buildMitochondrion(0.82);
+      mito3.position.set(1.05, 0.12, -3.05);
+      mito3.rotation.set(0.25, 0.55, 0.05);
+      register('mitochondrion', mito3, new THREE.Vector3(0.15, 0.92, 2.55), new THREE.Vector3(1.15, 0.85, -2.55), 4.0);
+
+      // 8. Centrosome (Animal ONLY — pair of perpendicular 9×3 centrioles near nucleus)
+      const centrosome = buildCentrosome(1.08);
+      centrosome.position.set(-2.35, 0.52, 1.02);
+      centrosome.rotation.y = 0.45;
+      register('centrosome', centrosome, new THREE.Vector3(-2.35, 1.35, 1.02), new THREE.Vector3(-2.45, 1.65, 1.25), 3.8);
+
+      // 9. Lysosome × 2 (Animal typical — 7/8 cutaway revealing colorful hydrolytic enzymes!)
+      const lyso1 = buildLysosome(0.52);
+      lyso1.position.set(-1.78, 0.25, 2.65);
+      lyso1.rotation.y = 0.25;
+      register('lysosome', lyso1, new THREE.Vector3(-1.78, 0.95, 2.65), new THREE.Vector3(-1.85, 1.15, 2.45), 3.5);
+
+      const lyso2 = buildLysosome(0.36);
+      lyso2.position.set(3.45, 0.08, -0.25);
+      lyso2.rotation.y = -0.45;
+      register('lysosome', lyso2, new THREE.Vector3(-1.78, 0.95, 2.65), new THREE.Vector3(2.85, 0.85, -0.25), 3.5);
+
+      // 10. Peroxisome × 2 (7/8 cutaway revealing crystalline core!)
+      const perox1 = buildPeroxisome(0.48);
+      perox1.position.set(1.88, 0.25, 2.68);
+      perox1.rotation.y = -0.18;
+      register('peroxisome', perox1, new THREE.Vector3(1.88, 0.92, 2.68), new THREE.Vector3(1.95, 1.15, 2.55), 3.4);
+
+      const perox2 = buildPeroxisome(0.34);
+      perox2.position.set(-2.65, 0.08, -2.35);
+      perox2.rotation.y = 0.4;
+      register('peroxisome', perox2, new THREE.Vector3(1.88, 0.92, 2.68), new THREE.Vector3(-2.25, 0.85, -2.15), 3.4);
+
+      // 11. Free Ribosome Polysomes × 3
+      const ribo1 = buildRibosomeCluster(1.22, false);
+      ribo1.position.set(-0.75, 0.34, 1.38);
+      ribo1.rotation.y = 0.35;
+      register('ribosome', ribo1, new THREE.Vector3(-0.75, 0.92, 1.38), new THREE.Vector3(-0.85, 1.45, 1.55), 3.4);
+
+      const ribo2 = buildRibosomeCluster(1.05, false);
+      ribo2.position.set(1.38, 0.22, 0.72);
+      ribo2.rotation.y = -0.5;
+      register('ribosome', ribo2, new THREE.Vector3(-0.75, 0.92, 1.38), new THREE.Vector3(1.45, 1.25, 0.85), 3.4);
+
+      const ribo3 = buildRibosomeCluster(1.0, false);
+      ribo3.position.set(-3.15, 0.14, 1.85);
+      ribo3.rotation.y = 1.1;
+      register('ribosome', ribo3, new THREE.Vector3(-0.75, 0.92, 1.38), new THREE.Vector3(-2.65, 1.05, 1.75), 3.4);
+
+      return { root, orgMap };
+    }
+
+    function buildPlantCellScene() {
+      const root = new THREE.Group();
+      const orgMap = {};
+
+      const register = (orgId, group, anchorPos, explodeDir, focusDist = 4.6) => {
+        tagOrganelle(group, orgId);
+        group.userData.basePos = group.position.clone();
+        group.userData.explodeVec = explodeDir.clone();
+        root.add(group);
+        if (!orgMap[orgId]) {
+          orgMap[orgId] = { instances: [], anchor: anchorPos.clone(), baseAnchor: anchorPos.clone(), explodeVec: explodeDir.clone(), focusDist };
+        }
+        orgMap[orgId].instances.push(group);
+      };
+
+      // 1. Cell Wall & Plasmodesmata (Plant ONLY)
+      const cellWall = buildPlantCellWall();
+      register('cellWall', cellWall, new THREE.Vector3(4.55, 1.55, -2.25), new THREE.Vector3(0, -1.95, 0), 12.2);
+
+      // 2. Inner Plasma Membrane (golden lining directly inside cell wall)
+      const membrane = buildPlantInnerMembrane();
+      register('membrane', membrane, new THREE.Vector3(-4.25, 0.15, 2.35), new THREE.Vector3(0, -1.35, 0), 11.2);
+
+      // 3. Cytoplasm & Cytoskeleton
+      const cytoplasm = buildCytoplasmAndSkeleton('plant');
+      register('cytoplasm', cytoplasm, new THREE.Vector3(3.85, -0.25, 2.55), new THREE.Vector3(0, -0.95, 0), 10.5);
+
+      // 4. Central Large Vacuole (Plant ONLY — huge luminous sky-aqua sac)
+      const vacuole = buildCentralVacuole(1.02);
+      vacuole.position.set(1.28, 0.08, 0.32);
+      register('vacuole', vacuole, new THREE.Vector3(1.35, 1.35, 0.35), new THREE.Vector3(1.55, 1.65, 0.35), 6.2);
+
+      // 5. Nucleus (pushed off-center to left-back by the Central Vacuole!)
+      const nucleus = buildNucleus(1.30);
+      nucleus.position.set(-1.82, 0.62, -0.82);
+      nucleus.rotation.y = 0.25;
+      register('nucleus', nucleus, new THREE.Vector3(-1.82, 1.88, -0.78), new THREE.Vector3(-1.85, 2.35, -0.95), 4.8);
+
+      // 6. Rough ER (wrapping back-left of the off-center nucleus cleanly with zero overlap)
+      const roughER = buildRoughER(Math.PI * 0.78, 1.46, 0.88);
+      roughER.position.set(-1.82, 0.30, -0.82);
+      roughER.rotation.y = Math.PI * 0.62;
+      register('roughER', roughER, new THREE.Vector3(-3.25, 1.05, -2.05), new THREE.Vector3(-2.65, 1.25, -1.85), 5.2);
+
+      // 7. Smooth ER (branching cyan tubules behind vacuole/nucleus)
+      const smoothER = buildSmoothER(0.95);
+      smoothER.position.set(-0.18, 0.25, -2.92);
+      smoothER.rotation.y = 0.5;
+      register('smoothER', smoothER, new THREE.Vector3(-0.18, 1.02, -2.92), new THREE.Vector3(-0.15, 1.25, -2.55), 4.2);
+
+      // 8. Chloroplasts × 4 (Plant ONLY — peripheral emerald bowls with grana coin stacks!)
+      const chloro1 = buildChloroplast(1.02);
+      chloro1.position.set(-0.92, 0.32, 2.92);
+      chloro1.rotation.set(0.32, 0.22, -0.06);
+      register('chloroplast', chloro1, new THREE.Vector3(-0.92, 1.02, 2.92), new THREE.Vector3(-0.95, 1.35, 2.65), 4.2);
+
+      const chloro2 = buildChloroplast(0.92);
+      chloro2.position.set(2.85, 0.30, 2.15);
+      chloro2.rotation.set(0.28, -0.72, 0.08);
+      register('chloroplast', chloro2, new THREE.Vector3(-0.92, 1.02, 2.92), new THREE.Vector3(2.45, 1.15, 2.05), 4.2);
+
+      const chloro3 = buildChloroplast(0.94);
+      chloro3.position.set(1.62, 0.38, -2.68);
+      chloro3.rotation.set(0.26, 0.35, -0.05);
+      register('chloroplast', chloro3, new THREE.Vector3(-0.92, 1.02, 2.92), new THREE.Vector3(1.55, 1.25, -2.45), 4.2);
+
+      const chloro4 = buildChloroplast(0.86);
+      chloro4.position.set(3.62, 0.32, -0.58);
+      chloro4.rotation.set(0.25, 1.38, 0.06);
+      register('chloroplast', chloro4, new THREE.Vector3(-0.92, 1.02, 2.92), new THREE.Vector3(2.95, 1.15, -0.55), 4.2);
+
+      // 9. Mitochondria × 3
+      const mito1 = buildMitochondrion(0.96);
+      mito1.position.set(1.08, 0.26, 2.98);
+      mito1.rotation.set(0.30, -0.42, 0.08);
+      register('mitochondrion', mito1, new THREE.Vector3(1.08, 0.92, 2.98), new THREE.Vector3(1.15, 1.15, 2.75), 4.0);
+
+      const mito2 = buildMitochondrion(0.82);
+      mito2.position.set(3.22, 0.25, -2.02);
+      mito2.rotation.set(0.24, 0.85, -0.08);
+      register('mitochondrion', mito2, new THREE.Vector3(1.08, 0.92, 2.98), new THREE.Vector3(2.65, 1.05, -1.85), 4.0);
+
+      const mito3 = buildMitochondrion(0.78);
+      mito3.position.set(3.48, 0.24, 0.85);
+      mito3.rotation.set(0.24, Math.PI / 2, 0.06);
+      register('mitochondrion', mito3, new THREE.Vector3(1.08, 0.92, 2.98), new THREE.Vector3(2.95, 1.05, 0.85), 4.0);
+
+      // 10. Golgi Apparatus (front-left pocket)
+      const golgi = buildGolgi(0.92);
+      golgi.position.set(-2.95, 0.32, 1.15);
+      golgi.rotation.y = 2.45;
+      register('golgi', golgi, new THREE.Vector3(-2.95, 1.02, 1.15), new THREE.Vector3(-2.75, 1.25, 1.25), 4.2);
+
+      // 11. Peroxisome × 2 (7/8 cutaway with crystal core!)
+      const perox1 = buildPeroxisome(0.45);
+      perox1.position.set(-2.45, 0.26, 2.52);
+      perox1.rotation.y = 0.22;
+      register('peroxisome', perox1, new THREE.Vector3(-2.45, 0.88, 2.52), new THREE.Vector3(-2.35, 1.15, 2.35), 3.4);
+
+      const perox2 = buildPeroxisome(0.35);
+      perox2.position.set(0.55, 0.22, -1.95);
+      perox2.rotation.y = -0.3;
+      register('peroxisome', perox2, new THREE.Vector3(-2.45, 0.88, 2.52), new THREE.Vector3(0.55, 0.95, -1.85), 3.4);
+
+      // 12. Free Ribosome Polysomes × 3
+      const ribo1 = buildRibosomeCluster(1.12, false);
+      ribo1.position.set(-1.25, 0.32, 1.25);
+      ribo1.rotation.y = 0.45;
+      register('ribosome', ribo1, new THREE.Vector3(-1.25, 0.88, 1.25), new THREE.Vector3(-1.25, 1.55, 1.35), 3.4);
+
+      const ribo2 = buildRibosomeCluster(0.95, false);
+      ribo2.position.set(-3.35, 0.24, -0.05);
+      ribo2.rotation.y = -0.6;
+      register('ribosome', ribo2, new THREE.Vector3(-1.25, 0.88, 1.25), new THREE.Vector3(-2.85, 1.25, -0.05), 3.4);
+
+      const ribo3 = buildRibosomeCluster(0.95, false);
+      ribo3.position.set(-0.25, 0.22, 1.92);
+      ribo3.rotation.y = 0.2;
+      register('ribosome', ribo3, new THREE.Vector3(-1.25, 0.88, 1.25), new THREE.Vector3(-0.25, 1.35, 1.95), 3.4);
+
+      return { root, orgMap };
+    }
+
+    /**
+     * 6.3 Dedicated High-Detail Hero Specimen Builder for Isolate Inspection Mode!
+     */
+    function buildIsolateSpecimen(orgId, cellMode) {
+      const wrap = new THREE.Group();
+      let obj;
+      switch (orgId) {
+        case 'nucleus':
+          obj = buildNucleus(1.55);
+          obj.rotation.y = 0.15;
+          break;
+        case 'mitochondrion':
+          obj = buildMitochondrion(1.65);
+          obj.rotation.set(0.32, -0.22, 0.04);
+          break;
+        case 'chloroplast':
+          obj = buildChloroplast(1.68);
+          obj.rotation.set(0.34, -0.18, 0.04);
+          break;
+        case 'roughER':
+          obj = buildRoughER(Math.PI * 1.15, 0.92, 1.15);
+          obj.rotation.set(0.18, Math.PI * 0.5, 0);
+          obj.position.set(0, 0, 0.45);
+          break;
+        case 'smoothER':
+          obj = buildSmoothER(1.75);
+          break;
+        case 'golgi':
+          obj = buildGolgi(1.65);
+          obj.rotation.set(0.22, -0.3, 0);
+          break;
+        case 'ribosome':
+          obj = buildRibosomeCluster(1.05, true);
+          obj.rotation.set(0.15, -0.2, 0);
+          break;
+        case 'centrosome':
+          obj = buildCentrosome(1.95);
+          break;
+        case 'lysosome':
+          obj = buildLysosome(1.38);
+          obj.rotation.y = 0.15;
+          break;
+        case 'peroxisome':
+          obj = buildPeroxisome(1.38);
+          obj.rotation.y = 0.15;
+          break;
+        case 'vacuole':
+          obj = buildCentralVacuole(1.18);
+          break;
+        case 'cellWall':
+          obj = buildPlantCellWall();
+          obj.scale.setScalar(0.38);
+          break;
+        case 'membrane':
+          obj = cellMode === 'animal' ? buildAnimalMembrane() : buildPlantInnerMembrane();
+          obj.scale.setScalar(0.38);
+          break;
+        case 'cytoplasm':
+          obj = buildCytoplasmAndSkeleton(cellMode);
+          obj.scale.setScalar(0.42);
+          obj.position.y = 0.35;
+          break;
+        default:
+          obj = buildNucleus(1.4);
+      }
+      wrap.add(obj);
+      return wrap;
+    }
+
+    /* =========================================================================
+       7. Custom Silky-Smooth Orbit / Pan / Zoom / Animated Fly-To Controller
+       ========================================================================= */
+    class SmoothOrbitController {
+      constructor(camera, domElement) {
+        this.camera = camera;
+        this.dom = domElement;
+
+        // Current smoothed state
+        this.target = new THREE.Vector3(0, 0, 0);
+        this.spherical = new THREE.Spherical(14.5, 0.98, 0.56);
+
+        // Desired state (damped toward)
+        this.desiredTarget = this.target.clone();
+        this.desiredSpherical = this.spherical.clone();
+
+        this.minRadius = 2.6;
+        this.maxRadius = 28;
+        this.minPhi = 0.14;
+        this.maxPhi = Math.PI - 0.18;
+        this.damping = 0.095;
+        this.autoRotate = false;
+        this.autoRotateSpeed = 0.22;
+
+        // Pointer tracking
+        this.pointers = new Map();
+        this.mode = 'none'; // 'rotate' | 'pan' | 'pinch'
+        this.lastX = 0;
+        this.lastY = 0;
+        this.lastPinchDist = 0;
+        this.downPos = { x: 0, y: 0 };
+        this.movedDist = 0;
+
+        this._bindEvents();
+        this.update(1);
+      }
+
+      _bindEvents() {
+        const d = this.dom;
+        d.addEventListener('contextmenu', (e) => e.preventDefault());
+
+        d.addEventListener('pointerdown', (e) => {
+          d.setPointerCapture(e.pointerId);
+          this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          this.downPos = { x: e.clientX, y: e.clientY };
+          this.movedDist = 0;
+
+          if (this.pointers.size === 1) {
+            this.mode = (e.button === 2 || e.shiftKey) ? 'pan' : 'rotate';
+            this.lastX = e.clientX;
+            this.lastY = e.clientY;
+          } else if (this.pointers.size === 2) {
+            this.mode = 'pinch';
+            const pts = [...this.pointers.values()];
+            this.lastPinchDist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+            this.lastX = (pts[0].x + pts[1].x) * 0.5;
+            this.lastY = (pts[0].y + pts[1].y) * 0.5;
+          }
+        });
+
+        d.addEventListener('pointermove', (e) => {
+          if (!this.pointers.has(e.pointerId)) return;
+          this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+          this.movedDist = Math.max(this.movedDist, Math.hypot(e.clientX - this.downPos.x, e.clientY - this.downPos.y));
+
+          if (this.mode === 'rotate' && this.pointers.size === 1) {
+            const dx = e.clientX - this.lastX;
+            const dy = e.clientY - this.lastY;
+            this.lastX = e.clientX;
+            this.lastY = e.clientY;
+            this.desiredSpherical.theta -= dx * 0.0068;
+            this.desiredSpherical.phi = THREE.MathUtils.clamp(
+              this.desiredSpherical.phi - dy * 0.0068,
+              this.minPhi,
+              this.maxPhi
+            );
+          } else if (this.mode === 'pan' && this.pointers.size === 1) {
+            const dx = e.clientX - this.lastX;
+            const dy = e.clientY - this.lastY;
+            this.lastX = e.clientX;
+            this.lastY = e.clientY;
+            this._pan(dx, dy);
+          } else if (this.mode === 'pinch' && this.pointers.size === 2) {
+            const pts = [...this.pointers.values()];
+            const dist = Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+            const cx = (pts[0].x + pts[1].x) * 0.5;
+            const cy = (pts[0].y + pts[1].y) * 0.5;
+            const factor = this.lastPinchDist / Math.max(dist, 1);
+            this.desiredSpherical.radius = THREE.MathUtils.clamp(
+              this.desiredSpherical.radius * factor,
+              this.minRadius,
+              this.maxRadius
+            );
+            this._pan(cx - this.lastX, cy - this.lastY);
+            this.lastPinchDist = dist;
+            this.lastX = cx;
+            this.lastY = cy;
+          }
+        });
+
+        const endPtr = (e) => {
+          this.pointers.delete(e.pointerId);
+          if (this.pointers.size === 0) {
+            this.mode = 'none';
+          } else if (this.pointers.size === 1) {
+            const pt = [...this.pointers.values()][0];
+            this.mode = 'rotate';
+            this.lastX = pt.x;
+            this.lastY = pt.y;
+          }
+        };
+        d.addEventListener('pointerup', endPtr);
+        d.addEventListener('pointercancel', endPtr);
+
+        d.addEventListener('wheel', (e) => {
+          e.preventDefault();
+          const scale = Math.pow(1.0012, e.deltaY);
+          this.desiredSpherical.radius = THREE.MathUtils.clamp(
+            this.desiredSpherical.radius * scale,
+            this.minRadius,
+            this.maxRadius
+          );
+        }, { passive: false });
+      }
+
+      _pan(dx, dy) {
+        const panSpeed = this.desiredSpherical.radius * 0.0014;
+        const right = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 0);
+        const up = new THREE.Vector3().setFromMatrixColumn(this.camera.matrix, 1);
+        this.desiredTarget.addScaledVector(right, -dx * panSpeed);
+        this.desiredTarget.addScaledVector(up, dy * panSpeed);
+        // Gently clamp pan radius so user never loses the cell off-screen
+        if (this.desiredTarget.length() > 8.5) {
+          this.desiredTarget.setLength(8.5);
+        }
+      }
+
+      flyTo(targetVec, radius, phi, theta) {
+        this.desiredTarget.copy(targetVec);
+        if (radius !== undefined) this.desiredSpherical.radius = THREE.MathUtils.clamp(radius, this.minRadius, this.maxRadius);
+        if (phi !== undefined) this.desiredSpherical.phi = THREE.MathUtils.clamp(phi, this.minPhi, this.maxPhi);
+        if (theta !== undefined) {
+          // Shortest angular path
+          const diff = Math.atan2(Math.sin(theta - this.spherical.theta), Math.cos(theta - this.spherical.theta));
+          this.desiredSpherical.theta = this.spherical.theta + diff;
+        }
+      }
+
+      update(dt) {
+        if (this.autoRotate && this.mode === 'none') {
+          this.desiredSpherical.theta += this.autoRotateSpeed * dt;
+        }
+        const k = 1 - Math.pow(1 - this.damping, Math.min(dt * 60, 4));
+        this.target.lerp(this.desiredTarget, k);
+        this.spherical.radius += (this.desiredSpherical.radius - this.spherical.radius) * k;
+        this.spherical.phi += (this.desiredSpherical.phi - this.spherical.phi) * k;
+        this.spherical.theta += (this.desiredSpherical.theta - this.spherical.theta) * k;
+
+        const offset = new THREE.Vector3().setFromSpherical(this.spherical);
+        this.camera.position.copy(this.target).add(offset);
+        this.camera.lookAt(this.target);
+      }
+    }
+
+    /* =========================================================================
+       8. Three.js Scene, Lighting & State Setup
+       ========================================================================= */
+    const canvas = document.getElementById('webgl-canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance' });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.16;
+
+    const scene = new THREE.Scene();
+    scene.environment = createStudioEnvironment(renderer);
+
+    const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 120);
+    const orbit = new SmoothOrbitController(camera, canvas);
+
+    // Rich 4-point scientific studio lighting
+    const hemiLight = new THREE.HemisphereLight(0xdbeafe, 0x1e293b, 0.85);
+    scene.add(hemiLight);
+
+    const keyLight = new THREE.DirectionalLight(0xfffbeb, 1.85);
+    keyLight.position.set(10, 14, 11);
+    scene.add(keyLight);
+
+    const fillLight = new THREE.DirectionalLight(0x7dd3fc, 0.95);
+    fillLight.position.set(-12, 6, 8);
+    scene.add(fillLight);
+
+    const rimLight = new THREE.DirectionalLight(0x6ee7b7, 0.85);
+    rimLight.position.set(-2, 8, -14);
+    scene.add(rimLight);
+
+    // Subtle glowing pedestal halo ring beneath specimen to anchor 3D depth
+    const pedestalRing = new THREE.Mesh(
+      new THREE.RingGeometry(5.6, 6.2, 64),
+      new THREE.MeshBasicMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.12,
+        side: THREE.DoubleSide,
+        depthWrite: false
+      })
+    );
+    pedestalRing.rotation.x = -Math.PI / 2;
+    pedestalRing.position.y = -3.45;
+    scene.add(pedestalRing);
+
+    // Subtle floating microscopic ambient dust particles for depth
+    const dustCount = 90;
+    const dustPos = new Float32Array(dustCount * 3);
+    for (let i = 0; i < dustCount; i++) {
+      const r = 8 + Math.random() * 14;
+      const a = Math.random() * Math.PI * 2;
+      const y = (Math.random() - 0.5) * 14;
+      dustPos[i * 3] = Math.cos(a) * r;
+      dustPos[i * 3 + 1] = y;
+      dustPos[i * 3 + 2] = Math.sin(a) * r;
+    }
+    const dustGeo = new THREE.BufferGeometry();
+    dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+    const dustPoints = new THREE.Points(
+      dustGeo,
+      new THREE.PointsMaterial({ color: 0x93c5fd, size: 0.08, transparent: true, opacity: 0.32, depthWrite: false })
+    );
+    scene.add(dustPoints);
+
+    // Pre-build both cells for instantaneous switching!
+    const cells = {
+      animal: buildAnimalCellScene(),
+      plant: buildPlantCellScene()
+    };
+    scene.add(cells.animal.root);
+    scene.add(cells.plant.root);
+    cells.plant.root.visible = false;
+
+    // Dedicated container for Isolate Inspection Stage
+    const isolateStage = new THREE.Group();
+    isolateStage.visible = false;
+    scene.add(isolateStage);
+
+    // Application State
+    const state = {
+      cellMode: 'animal', // 'animal' | 'plant'
+      selectedOrg: null,
+      hoveredOrg: null,
+      isolateMode: false,
+      showLabels: true,
+      ghostShell: false,
+      explodeAmount: 0,
+      targetExplode: 0
+    };
+
+    /* =========================================================================
+       9. 3D Projected HTML Labels Engine
+       ========================================================================= */
+    const labelsLayer = document.getElementById('labels-layer');
+    let activeLabelNodes = [];
+
+    function rebuildLabels() {
+      labelsLayer.innerHTML = '';
+      activeLabelNodes = [];
+
+      if (state.isolateMode && state.selectedOrg) {
+        const info = ORGANELLES[state.selectedOrg];
+        if (!info || !info.subLabels) return;
+        info.subLabels.forEach((sub) => {
+          const el = document.createElement('div');
+          el.className = 'label-3d sub-pin';
+          el.innerHTML = `<span class="dot" style="background:${sub.color};color:${sub.color}"></span>${sub.text}`;
+          labelsLayer.appendChild(el);
+          activeLabelNodes.push({
+            el,
+            worldPos: new THREE.Vector3(...sub.pos),
+            isSub: true
+          });
+        });
+        return;
+      }
+
+      const roster = CELL_ROSTERS[state.cellMode];
+      const orgMap = cells[state.cellMode].orgMap;
+      roster.forEach((orgId) => {
+        const info = ORGANELLES[orgId];
+        const entry = orgMap[orgId];
+        if (!info || !entry) return;
+        const el = document.createElement('div');
+        el.className = 'label-3d' + (state.selectedOrg === orgId ? ' active' : '');
+        el.innerHTML = `<span class="dot" style="background:${info.color};color:${info.color}"></span>${info.name}`;
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          selectOrganelle(orgId, true);
+        });
+        el.addEventListener('pointerenter', () => setHoverOrganelle(orgId));
+        el.addEventListener('pointerleave', () => setHoverOrganelle(null));
+        labelsLayer.appendChild(el);
+        activeLabelNodes.push({ el, orgId, entry, isSub: false });
+      });
+    }
+
+    const _projVec = new THREE.Vector3();
+    function updateLabelPositions() {
+      if (!state.showLabels) {
+        labelsLayer.style.display = 'none';
+        return;
+      }
+      labelsLayer.style.display = 'block';
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+
+      activeLabelNodes.forEach((item) => {
+        if (item.isSub) {
+          _projVec.copy(item.worldPos);
+        } else {
+          _projVec.copy(item.entry.anchor);
+        }
+        _projVec.project(camera);
+
+        if (_projVec.z > 1 || _projVec.z < -1) {
+          item.el.classList.add('hidden');
+          return;
+        }
+        const x = (_projVec.x * 0.5 + 0.5) * w;
+        const y = (-_projVec.y * 0.5 + 0.5) * h;
+
+        if (x < -40 || x > w + 40 || y < -40 || y > h + 40) {
+          item.el.classList.add('hidden');
+          return;
+        }
+        item.el.classList.remove('hidden');
+        item.el.style.transform = `translate3d(${x.toFixed(1)}px, ${y.toFixed(1)}px, 0) translate(-50%, -50%)`;
+
+        if (!item.isSub) {
+          item.el.classList.toggle('active', state.selectedOrg === item.orgId);
+        }
+      });
+    }
+
+    /* =========================================================================
+       10. Highlight, Ghost Shell, Explode & Isolate Mode Logic
+       ========================================================================= */
+    function applyMaterialHighlights(time) {
+      if (state.isolateMode) return;
+      const orgMap = cells[state.cellMode].orgMap;
+      const pulse = 0.5 + 0.5 * Math.sin(time * 4.2);
+
+      Object.entries(orgMap).forEach(([orgId, entry]) => {
+        const isSel = state.selectedOrg === orgId;
+        const isHov = state.hoveredOrg === orgId;
+        const isBoundary = orgId === 'cellWall' || orgId === 'membrane';
+
+        entry.instances.forEach((grp) => {
+          grp.traverse((mesh) => {
+            if (!mesh.isMesh || !mesh.material) return;
+            const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+            mats.forEach((m) => {
+              // Ghost shell transparency mode
+              if (mesh.userData.isShellWall && isBoundary) {
+                if (state.ghostShell) {
+                  m.transparent = true;
+                  m.opacity = 0.24;
+                  m.depthWrite = false;
+                } else {
+                  m.transparent = m.userData._baseTransparent;
+                  m.opacity = m.userData._baseOpacity;
+                  m.depthWrite = !m.transparent;
+                }
+              }
+
+              // Emissive selection / hover feedback
+              if (m.emissive && m.userData._baseEmissive) {
+                if (isSel) {
+                  m.emissive.copy(m.userData._baseEmissive).lerp(new THREE.Color(ORGANELLES[orgId].color), 0.45 + 0.2 * pulse);
+                  m.emissiveIntensity = m.userData._baseEmissiveIntensity + 0.35 + 0.22 * pulse;
+                } else if (isHov) {
+                  m.emissive.copy(m.userData._baseEmissive).lerp(new THREE.Color(0xffffff), 0.26);
+                  m.emissiveIntensity = m.userData._baseEmissiveIntensity + 0.28;
+                } else {
+                  m.emissive.copy(m.userData._baseEmissive);
+                  m.emissiveIntensity = m.userData._baseEmissiveIntensity;
+                }
+              }
+            });
+          });
+        });
+      });
+    }
+
+    function updateExplodePositions() {
+      const k = state.explodeAmount;
+      const orgMap = cells[state.cellMode].orgMap;
+      Object.values(orgMap).forEach((entry) => {
+        entry.anchor.copy(entry.baseAnchor).addScaledVector(entry.explodeVec, k);
+        entry.instances.forEach((grp) => {
+          grp.position.copy(grp.userData.basePos).addScaledVector(grp.userData.explodeVec, k);
+        });
+      });
+    }
+
+    function enterIsolateMode(orgId) {
+      if (!orgId) return;
+      state.selectedOrg = orgId;
+      state.isolateMode = true;
+
+      // Clear previous specimen
+      while (isolateStage.children.length) {
+        isolateStage.remove(isolateStage.children[0]);
+      }
+      const specimen = buildIsolateSpecimen(orgId, state.cellMode);
+      isolateStage.add(specimen);
+
+      cells.animal.root.visible = false;
+      cells.plant.root.visible = false;
+      isolateStage.visible = true;
+      pedestalRing.scale.setScalar(0.55);
+      pedestalRing.position.y = -2.2;
+
+      orbit.flyTo(new THREE.Vector3(0, 0, 0), 6.2, 1.08, 0.58);
+
+      document.getElementById('iso-name').textContent = ORGANELLES[orgId].name;
+      document.getElementById('isolate-banner').classList.add('visible');
+
+      rebuildLabels();
+      renderInfoPanel();
+      renderSidebarActive();
+    }
+
+    function exitIsolateMode(refocusCell = true) {
+      if (!state.isolateMode) return;
+      state.isolateMode = false;
+      isolateStage.visible = false;
+      cells[state.cellMode].root.visible = true;
+      pedestalRing.scale.setScalar(1.0);
+      pedestalRing.position.y = -3.45;
+
+      document.getElementById('isolate-banner').classList.remove('visible');
+
+      if (refocusCell) {
+        if (state.selectedOrg && cells[state.cellMode].orgMap[state.selectedOrg]) {
+          focusOnOrganelle(state.selectedOrg);
+        } else {
+          resetCameraView();
+        }
+      }
+
+      rebuildLabels();
+      renderInfoPanel();
+    }
+
+    function focusOnOrganelle(orgId) {
+      const entry = cells[state.cellMode].orgMap[orgId];
+      if (!entry) return;
+      const hero = entry.instances[0];
+      const box = new THREE.Box3().setFromObject(hero);
+      const center = new THREE.Vector3();
+      box.getCenter(center);
+      // Keep membrane/cellWall/cytoplasm framed from full cell center
+      if (orgId === 'membrane' || orgId === 'cellWall' || orgId === 'cytoplasm') {
+        orbit.flyTo(new THREE.Vector3(0, 0, 0), entry.focusDist, 0.96, 0.56);
+      } else {
+        // Aim nicely from front-top toward organelle center
+        const theta = Math.atan2(center.x, center.z);
+        const targetTheta = Number.isFinite(theta) && center.length() > 1.2 ? theta * 0.45 + 0.35 : 0.52;
+        orbit.flyTo(center, entry.focusDist, 0.92, targetTheta);
+      }
+    }
+
+    function selectOrganelle(orgId, shouldFocus = true) {
+      if (!orgId) {
+        state.selectedOrg = null;
+        if (state.isolateMode) exitIsolateMode(true);
+        renderSidebarActive();
+        renderInfoPanel();
+        return;
+      }
+
+      if (state.isolateMode) {
+        enterIsolateMode(orgId);
+        return;
+      }
+
+      state.selectedOrg = orgId;
+      if (shouldFocus) focusOnOrganelle(orgId);
+      // Ensure info panel is open on desktop/mobile when selecting an organelle
+      document.getElementById('info-panel').classList.remove('collapsed');
+      document.getElementById('reopen-info-btn').classList.remove('visible');
+
+      renderSidebarActive();
+      renderInfoPanel();
+    }
+
+    function setHoverOrganelle(orgId) {
+      state.hoveredOrg = orgId;
+      canvas.style.cursor = orgId ? 'pointer' : (orbit.mode !== 'none' ? 'grabbing' : 'grab');
+    }
+
+    function switchCellMode(newMode) {
+      if (newMode === state.cellMode && !state.isolateMode) return;
+      if (state.isolateMode) exitIsolateMode(false);
+
+      state.cellMode = newMode;
+      state.selectedOrg = null;
+      state.hoveredOrg = null;
+      state.targetExplode = 0;
+      state.explodeAmount = 0;
+      document.getElementById('explode-slider').value = '0';
+
+      cells.animal.root.visible = newMode === 'animal';
+      cells.plant.root.visible = newMode === 'plant';
+      updateExplodePositions();
+
+      document.body.classList.toggle('mode-animal', newMode === 'animal');
+      document.body.classList.toggle('mode-plant', newMode === 'plant');
+      pedestalRing.material.color.setHex(newMode === 'animal' ? 0x38bdf8 : 0x34d399);
+
+      document.querySelectorAll('.switch-btn').forEach((btn) => {
+        const active = btn.dataset.cell === newMode;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-selected', String(active));
+      });
+
+      resetCameraView();
+      renderSidebar();
+      renderInfoPanel();
+      rebuildLabels();
+    }
+
+    function resetCameraView() {
+      if (state.isolateMode) {
+        orbit.flyTo(new THREE.Vector3(0, 0, 0), 6.2, 1.08, 0.58);
+      } else {
+        orbit.flyTo(new THREE.Vector3(0, -0.15, 0), 14.2, 0.96, 0.54);
+      }
+    }
+
+    /* =========================================================================
+       11. UI Rendering (Directory Sidebar & Detail Inspector Card)
+       ========================================================================= */
+    function renderSidebar() {
+      const list = document.getElementById('sidebar-list');
+      const roster = CELL_ROSTERS[state.cellMode];
+      document.getElementById('org-count').textContent = String(roster.length);
+
+      // Group organelles cleanly by biological category
+      const groups = {};
+      roster.forEach((id) => {
+        const info = ORGANELLES[id];
+        if (!groups[info.group]) groups[info.group] = [];
+        groups[info.group].push(info);
+      });
+
+      list.innerHTML = '';
+      Object.entries(groups).forEach(([groupName, items]) => {
+        const header = document.createElement('div');
+        header.className = 'group-label';
+        header.textContent = groupName;
+        list.appendChild(header);
+
+        items.forEach((info) => {
+          const btn = document.createElement('button');
+          btn.className = 'org-item' + (state.selectedOrg === info.id ? ' active' : '');
+          btn.dataset.orgId = info.id;
+
+          let uniqueTag = '';
+          if (info.unique === 'animal') uniqueTag = '<span class="org-tag unique-animal">动物典型</span>';
+          if (info.unique === 'plant') uniqueTag = '<span class="org-tag unique-plant">植物特有</span>';
+
+          btn.innerHTML = `
+            <span class="org-swatch" style="background:${info.color};color:${info.color}"></span>
+            <span class="org-item-text">
+              <div class="org-item-name">${info.name}</div>
+              <div class="org-item-en">${info.en}</div>
+            </span>
+            ${uniqueTag}
+          `;
+          btn.addEventListener('click', () => selectOrganelle(info.id, true));
+          btn.addEventListener('pointerenter', () => setHoverOrganelle(info.id));
+          btn.addEventListener('pointerleave', () => setHoverOrganelle(null));
+          list.appendChild(btn);
+        });
+      });
+    }
+
+    function renderSidebarActive() {
+      document.querySelectorAll('.org-item').forEach((el) => {
+        const active = el.dataset.orgId === state.selectedOrg;
+        el.classList.toggle('active', active);
+        if (active) el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      });
+    }
+
+    function renderInfoPanel() {
+      const dot = document.getElementById('info-dot');
+      const title = document.getElementById('info-title');
+      const en = document.getElementById('info-en');
+      const badges = document.getElementById('info-badges');
+      const body = document.getElementById('info-body');
+      const footer = document.getElementById('info-footer');
+
+      if (!state.selectedOrg) {
+        const ov = CELL_OVERVIEW[state.cellMode];
+        dot.style.background = ov.color;
+        dot.style.color = ov.color;
+        title.textContent = ov.name;
+        en.textContent = ov.en;
+        badges.innerHTML = ov.badges.map((b) => `<span class="meta-badge">${b}</span>`).join('');
+
+        body.innerHTML = `
+          <p class="info-summary">${ov.summary}</p>
+          <div class="overview-grid">
+            ${ov.stats.map((s) => `<div class="stat-tile"><div class="k">${s.k}</div><div class="v">${s.v}</div></div>`).join('')}
+          </div>
+          <div class="section-card">
+            <h3>🕹️ 3D 交互指南</h3>
+            <div class="gesture-hint">
+              <div>• <strong>左键拖动 / 单指滑动</strong>：360° 旋转视角</div>
+              <div>• <strong>滚轮 / 双指捏合</strong>：平滑缩放观察细节</div>
+              <div>• <strong>右键拖动 / Shift+拖动</strong>：平移画面</div>
+              <div>• <strong>点击 / 双击细胞器</strong>：聚焦查看或独立特写</div>
+            </div>
+          </div>
+          <div class="tip-box"><strong>学习建议：</strong>${ov.tip}</div>
+        `;
+
+        const firstOrg = state.cellMode === 'animal' ? 'nucleus' : 'chloroplast';
+        footer.innerHTML = `
+          <button class="primary-cta" id="btn-start-tour">✨ 开始逐个细胞器导览</button>
+        `;
+        document.getElementById('btn-start-tour').addEventListener('click', () => selectOrganelle(firstOrg, true));
+        return;
+      }
+
+      const info = ORGANELLES[state.selectedOrg];
+      dot.style.background = info.color;
+      dot.style.color = info.color;
+      title.textContent = info.name;
+      en.textContent = info.en;
+
+      let badgeHtml = `<span class="meta-badge">${info.membrane}</span><span class="meta-badge">${info.group}</span>`;
+      if (info.unique === 'animal') badgeHtml += `<span class="meta-badge special-animal">★ 动物细胞典型</span>`;
+      if (info.unique === 'plant') badgeHtml += `<span class="meta-badge special-plant">★ 高等植物特有</span>`;
+      badges.innerHTML = badgeHtml;
+
+      body.innerHTML = `
+        <p class="info-summary">${info.summary}</p>
+        <div class="section-card">
+          <h3>🔬 可见 3D 结构特征</h3>
+          <ul class="anatomy-list">
+            ${info.anatomy.map((a) => `
+              <li>
+                <span class="part-swatch" style="background:${a.color};color:${a.color}"></span>
+                <span>${a.text}</span>
+              </li>
+            `).join('')}
+          </ul>
+        </div>
+        <div class="section-card">
+          <h3>⚡ 核心生理功能</h3>
+          <ul class="func-list">
+            ${info.functions.map((f) => `<li>${f}</li>`).join('')}
+          </ul>
+        </div>
+        <div class="tip-box"><strong>💡 知识要点：</strong>${info.tip}</div>
+      `;
+
+      const roster = CELL_ROSTERS[state.cellMode];
+      const idx = roster.indexOf(state.selectedOrg);
+      const prevId = roster[(idx - 1 + roster.length) % roster.length];
+      const nextId = roster[(idx + 1) % roster.length];
+
+      footer.innerHTML = `
+        <button class="primary-cta ${state.isolateMode ? 'active-iso' : ''}" id="btn-toggle-isolate">
+          ${state.isolateMode ? '🔙 返回完整细胞视角' : '🔍 独立特写观察（含内部细部标注）'}
+        </button>
+        <div class="nav-row">
+          <button class="sec-btn" id="btn-prev-org">◀ ${ORGANELLES[prevId].name.slice(0, 6)}</button>
+          <button class="sec-btn" id="btn-next-org">${ORGANELLES[nextId].name.slice(0, 6)} ▶</button>
+        </div>
+      `;
+
+      document.getElementById('btn-toggle-isolate').addEventListener('click', () => {
+        if (state.isolateMode) exitIsolateMode(true);
+        else enterIsolateMode(state.selectedOrg);
+      });
+      document.getElementById('btn-prev-org').addEventListener('click', () => selectOrganelle(prevId, true));
+      document.getElementById('btn-next-org').addEventListener('click', () => selectOrganelle(nextId, true));
+    }
+
+    /* =========================================================================
+       12. 3D Raycasting (Hover Tooltip, Click Select, Double-Click Isolate)
+       ========================================================================= */
+    const raycaster = new THREE.Raycaster();
+    const pointerNDC = new THREE.Vector2();
+    const hoverTip = document.getElementById('hover-tip');
+
+    function pickOrganelleAt(clientX, clientY) {
+      if (state.isolateMode) return null;
+      pointerNDC.x = (clientX / window.innerWidth) * 2 - 1;
+      pointerNDC.y = -(clientY / window.innerHeight) * 2 + 1;
+      raycaster.setFromCamera(pointerNDC, camera);
+
+      const hits = raycaster.intersectObjects(cells[state.cellMode].root.children, true);
+      // Prefer inner organelles over sheer ghost dome or cytoplasm bed when clicking through!
+      let fallback = null;
+      for (const h of hits) {
+        if (h.object.userData.isGhostDome) continue;
+        const id = h.object.userData.orgId;
+        if (!id) continue;
+        if (id === 'cytoplasm' || (state.ghostShell && (id === 'membrane' || id === 'cellWall'))) {
+          if (!fallback) fallback = id;
+          continue;
+        }
+        return id;
+      }
+      return fallback;
+    }
+
+    canvas.addEventListener('pointermove', (e) => {
+      if (orbit.mode !== 'none' || state.isolateMode) {
+        hoverTip.classList.remove('visible');
+        return;
+      }
+      const id = pickOrganelleAt(e.clientX, e.clientY);
+      setHoverOrganelle(id);
+      if (id && ORGANELLES[id]) {
+        hoverTip.innerHTML = `${ORGANELLES[id].name}<span>${ORGANELLES[id].en} · 点击聚焦 / 双击独立特写</span>`;
+        hoverTip.style.left = `${e.clientX}px`;
+        hoverTip.style.top = `${e.clientY}px`;
+        hoverTip.classList.add('visible');
+      } else {
+        hoverTip.classList.remove('visible');
+      }
+    });
+
+    canvas.addEventListener('pointerleave', () => {
+      setHoverOrganelle(null);
+      hoverTip.classList.remove('visible');
+    });
+
+    let lastClickTime = 0;
+    let lastClickOrg = null;
+
+    canvas.addEventListener('pointerup', (e) => {
+      if (e.button !== 0 || orbit.movedDist > 6 || state.isolateMode) return;
+      const id = pickOrganelleAt(e.clientX, e.clientY);
+      const now = performance.now();
+      if (id) {
+        if (id === lastClickOrg && now - lastClickTime < 380) {
+          enterIsolateMode(id);
+          lastClickTime = 0;
+        } else {
+          selectOrganelle(id, true);
+          lastClickTime = now;
+          lastClickOrg = id;
+        }
+      } else {
+        // Clicking empty space deselects gently
+        selectOrganelle(null, false);
+        lastClickOrg = null;
+      }
+    });
+
+    /* =========================================================================
+       13. Wire Up Controls, Modals & Responsive Drawer Toggles
+       ========================================================================= */
+    document.querySelectorAll('.switch-btn').forEach((btn) => {
+      btn.addEventListener('click', () => switchCellMode(btn.dataset.cell));
+    });
+
+    document.getElementById('btn-exit-isolate').addEventListener('click', () => exitIsolateMode(true));
+
+    const sidebarEl = document.getElementById('sidebar');
+    const reopenSidebarBtn = document.getElementById('reopen-sidebar-btn');
+    document.getElementById('btn-close-sidebar').addEventListener('click', () => {
+      sidebarEl.classList.add('collapsed');
+      reopenSidebarBtn.classList.add('visible');
+    });
+    reopenSidebarBtn.addEventListener('click', () => {
+      sidebarEl.classList.remove('collapsed');
+      reopenSidebarBtn.classList.remove('visible');
+    });
+
+    const infoPanelEl = document.getElementById('info-panel');
+    const reopenInfoBtn = document.getElementById('reopen-info-btn');
+    document.getElementById('btn-close-info').addEventListener('click', () => {
+      infoPanelEl.classList.add('collapsed');
+      reopenInfoBtn.classList.add('visible');
+    });
+    reopenInfoBtn.addEventListener('click', () => {
+      infoPanelEl.classList.remove('collapsed');
+      reopenInfoBtn.classList.remove('visible');
+    });
+
+    // Collapse sidebar automatically on narrow phones for clean first-impression canvas
+    if (window.innerWidth <= 768) {
+      sidebarEl.classList.add('collapsed');
+      reopenSidebarBtn.classList.add('visible');
+    }
+
+    // Bottom Dock Controls
+    const btnLabels = document.getElementById('btn-labels');
+    btnLabels.addEventListener('click', () => {
+      state.showLabels = !state.showLabels;
+      btnLabels.classList.toggle('active', state.showLabels);
+    });
+
+    const explodeSlider = document.getElementById('explode-slider');
+    explodeSlider.addEventListener('input', (e) => {
+      if (state.isolateMode) exitIsolateMode(false);
+      state.targetExplode = Number(e.target.value) / 100;
+    });
+
+    const btnGhost = document.getElementById('btn-ghost');
+    btnGhost.addEventListener('click', () => {
+      state.ghostShell = !state.ghostShell;
+      btnGhost.classList.toggle('active', state.ghostShell);
+    });
+
+    const btnAutoRotate = document.getElementById('btn-autorotate');
+    btnAutoRotate.addEventListener('click', () => {
+      orbit.autoRotate = !orbit.autoRotate;
+      btnAutoRotate.classList.toggle('active', orbit.autoRotate);
+    });
+
+    document.getElementById('btn-reset').addEventListener('click', () => {
+      state.targetExplode = 0;
+      explodeSlider.value = '0';
+      if (state.isolateMode) {
+        orbit.flyTo(new THREE.Vector3(0, 0, 0), 6.2, 1.08, 0.58);
+      } else {
+        state.selectedOrg = null;
+        renderSidebarActive();
+        renderInfoPanel();
+        resetCameraView();
+      }
+    });
+
+    // Comparison Modal
+    const compareModal = document.getElementById('compare-modal');
+    document.getElementById('btn-compare').addEventListener('click', () => compareModal.classList.add('open'));
+    document.getElementById('btn-close-modal').addEventListener('click', () => compareModal.classList.remove('open'));
+    compareModal.addEventListener('click', (e) => {
+      if (e.target === compareModal) compareModal.classList.remove('open');
+    });
+    document.querySelectorAll('[data-jump-cell]').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const targetCell = btn.dataset.jumpCell;
+        const targetOrg = btn.dataset.jumpOrg;
+        compareModal.classList.remove('open');
+        if (state.cellMode !== targetCell) switchCellMode(targetCell);
+        setTimeout(() => selectOrganelle(targetOrg, true), 60);
+      });
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') {
+        if (compareModal.classList.contains('open')) {
+          compareModal.classList.remove('open');
+        } else if (state.isolateMode) {
+          exitIsolateMode(true);
+        } else if (state.selectedOrg) {
+          selectOrganelle(null, false);
+        }
+      }
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    /* =========================================================================
+       14. Main Render & Gentle Biological Animation Loop
+       ========================================================================= */
+    // Initial UI setup
+    renderSidebar();
+    renderInfoPanel();
+    rebuildLabels();
+    resetCameraView();
+
+    const clock = new THREE.Clock();
+
+    function animate() {
+      requestAnimationFrame(animate);
+      const dt = Math.min(clock.getDelta(), 0.05);
+      const elapsed = clock.elapsedTime;
+
+      // Smoothly interpolate exploded view
+      if (Math.abs(state.explodeAmount - state.targetExplode) > 0.001) {
+        state.explodeAmount += (state.targetExplode - state.explodeAmount) * Math.min(1, dt * 8);
+        updateExplodePositions();
+      }
+
+      // Subtle living micro-motion (floating vesicles & vacuole solute sparkles)
+      const activeRoot = state.isolateMode ? isolateStage : cells[state.cellMode].root;
+      activeRoot.traverse((obj) => {
+        if (obj.userData.floatPhase !== undefined) {
+          obj.position.y = obj.userData.baseY + Math.sin(elapsed * 1.9 + obj.userData.floatPhase) * 0.032;
+        }
+      });
+
+      // Gentle ambient dust drift
+      dustPoints.rotation.y = elapsed * 0.015;
+
+      applyMaterialHighlights(elapsed);
+      orbit.update(dt);
+      renderer.render(scene, camera);
+      updateLabelPositions();
+    }
+
+    animate();
+
+    // Fade out loading overlay cleanly once first frames are rendering
+    requestAnimationFrame(() => {
+      const loader = document.getElementById('loading-overlay');
+      loader.classList.add('fade-out');
+      setTimeout(() => loader.remove(), 500);
+    });
+  </script>
+</body>
+</html>
